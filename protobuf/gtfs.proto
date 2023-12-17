@@ -1,0 +1,343 @@
+/** Copyright (c) 2023 Ilya Zverev. <ilya@zverev.info>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+*/
+
+syntax = "proto3";
+
+package gtfs;
+
+/* This is the file header with block sizes.
+Fields can come in any order, but in the file, blocks are
+serialized exactly in the order listed here.
+See also the "Block" message below for the order. */
+
+message GtfsHeader {
+  // Versions are incremental. When generating a feed for the next day,
+  // we're using the previous one for reference, and incrementing the version.
+  uint32 version = 1;
+
+  // In case of errors, this would be the reference feed.
+  // Please link to static files, e.g. "240319", not "latest".
+  string original_url = 2;
+
+  // If true, all blocks are compressed with Zstandard.
+  // https://facebook.github.io/zstd/
+  // TODO: maybe leave the compression to external tools, on a file level?
+  bool compressed = 3;
+
+  // First, dictionaries that are referenced by other tables.
+  uint32 agency = 4; // referenced from routes and fares
+  uint32 calendar = 5; // referenced from trips and fares
+  uint32 shapes = 6; // referenced from trips
+  uint32 networks = 7; // references from routes
+  uint32 areas = 8; // referenced from stops and fares
+  uint32 strings = 9; // referenced from stops, routes, trips
+
+  // And here, the core: stops, routes, and fares.
+  uint32 stops = 10;
+  uint32 routes = 11;
+  uint32 trips = 12; // depends on route_id and service_id (calendar)
+  uint32 transfers = 13; // depends on stop_id, route_id, trip_id
+
+  oneof fares {
+    uint32 fares_v1 = 14;
+    uint32 fares_v2 = 15;
+  }
+}
+
+/* All identifiers are renumbered, starting from 1.
+We do not keep any of original identifiers, so matching
+the data with an OpenTripPlanner instance, for example,
+would be tricky. Still. */
+
+message Agencies {
+  repeated Agency agencies = 1;
+}
+
+message Agency {
+  uint32 agency_id = 1; // Here identifiers are renumbered
+  string name = 2;
+  string url = 3;
+  string timezone = 4;
+  string lang = 5;
+  string phone = 6;
+  string fare_url = 7;
+  string email = 8;
+}
+
+/* Note: dates are compared on assumption there are 31 days
+in each month. This allows building days without calendar knowledge. */
+
+message Calendar {
+  // A number just like in GTFS: e.g. 20240821.
+  // All service dates use offsets in days from it.
+  uint32 base_date = 1;
+
+  // Most holidays will be the same I guess.
+  repeated CalendarDates dates = 2;
+  repeated CalendarService services = 3;
+}
+
+message CalendarDates {
+  uint32 days_id = 1;
+
+  // First is offset from base_date, each consequtive
+  // is stored as an offset to previous.
+  repeated uint32 dates = 2;
+}
+
+message CalendarService {
+  uint32 service_id = 1;
+  uint32 start_date = 2; // offset from base_date
+  uint32 end_date = 3; // offset from base_date
+  uint32 weekdays = 4; // binary: 1 for Monday, 2 for Tuesday, 4 for Wednesday etc.
+
+  // These fields come from calendar_days.txt.
+  uint32 added_days = 5; // references CalendarDays
+  uint32 removed_days = 6; // references CalendarDays
+}
+
+message Shapes {
+  sint32 base_longitude = 1; // usually the first coordinate
+  sint32 base_latitude = 2; // usually the first coordinate;
+  repeated TripShape shapes = 3;
+}
+
+message TripShape {
+  uint32 shape_id = 1;
+
+  // Numbers multiplied by 100000 (1e5) and rounded.
+  // Mind the accumulated rounding error!
+  // Each number is the difference with the last.
+  // First is difference with the base or the last from the last shape.
+  repeated sint32 longitudes = 2;
+  repeated sint32 latitudes = 3;
+}
+
+message Networks {
+  map<uint32, string> networks = 1;
+}
+
+message Areas {
+  map<uint32, string> areas = 1;
+}
+
+message StringTable {
+  // First string is always empty.
+  repeated string strings = 1;
+}
+
+message Stops {
+  repeated Stop stops = 1;
+}
+
+// Here missing optional fields means the value is copied from the previous one.
+message Stop {
+  uint32 stop_id = 1; // this one is generated for this feed
+  string code = 2;
+  uint32 name = 3; // references string table
+  string desc = 4;
+  sint32 lat = 5; // multiplied by 100000 (1e5), diff from the last
+  sint32 lon = 6; // same
+  uint32 zone_id = 7;
+  uint32 area_id = 8;
+  LocationType type = 9;
+  uint32 parent_id = 10;
+  Accessibility wheelchair = 11;
+  string platform_code = 12;
+  string external_str_id = 13; // external id for linking, as string
+  uint32 external_int_id = 14; // external id for linking, as number
+  // TODO: set optional and optimize
+}
+
+enum LocationType {
+  L_STOP = 0;
+  L_STATION = 1;
+  L_EXIT = 2;
+  L_NODE = 3;
+  L_BOARDING = 4;
+}
+
+enum Accessibility {
+  A_UNKNOWN = 0;
+  A_SOME = 1;
+  A_NO = 2;
+}
+
+message Routes {
+  // Sorted in sort_order if present, and in the source order otherwise.
+  repeated Route routes = 1;
+}
+
+message Route {
+  uint32 route_id = 1; // renumbered
+  uint32 agency_id = 2;
+  uint32 network_id = 3;
+  string short_name = 4;
+  // Long name is assumed to be in format "Stop 1 - Stop 2 - Stop 3".
+  // Each part is referenced from string table.
+  // If names are not in this format, just putting all long names verbatim there.
+  repeated uint32 long_name = 5;
+  string desc = 6;
+  RouteType type = 7;
+  uint32 color = 8; // note: black (0x000000) and white (0xffffff) are swapped!
+  uint32 text_color = 9;
+  PickupDropoff continuous_pickup = 10;
+  PickupDropoff continuous_dropoff = 11;
+
+  repeated RouteItinerary itineraries = 12; // to skip route_id there.
+}
+
+// See also https://developers.google.com/transit/gtfs/reference/extended-route-types
+enum RouteType {
+  // Renumbered to have the bus at 0 to save space.
+  BUS = 0; // 3 and all 7xx
+  TRAM = 1; // 0 and all 9xx
+  SUBWAY = 2; // 1 and also 401-402
+  RAIL = 3; // 2 and all 1xx
+  FERRY = 4; // also 1200
+  CABLE_TRAM = 5; // maybe 1302 but not sure
+  AERIAL = 6; // also 13xx
+  FUNICULAR = 7; // also 1400
+  COMMUNAL_TAXI = 9; // 1501
+  COACH = 10; // all 200-209
+  TROLLEYBUS = 11; // also 800
+  MONORAIL = 12; // also 405
+
+  URBAN_RAIL = 21; // 400, 403-404
+  WATER = 22; // 1000
+  AIR = 23; // 1100
+  TAXI = 24; // all 15xx except 1501
+  MISC = 25; // 17xx
+}
+
+enum PickupDropoff {
+  PD_NO = 0;
+  PD_YES = 1;
+  PD_PHONE_AGENCY = 2;
+  PD_TELL_DRIVER = 3;
+}
+
+/* Note that RouteTrip does not exactly mirror trips.txt.
+It takes a list of stops from stop_times.txt, hence there can be multiple.
+Also it doesn't mean one trip, but multiple with the same parameters. */
+message RouteItinerary {
+  uint32 itinerary_id = 1; // guaranteed to be unique throughout the entire feed
+  uint32 headsign = 2; // referencing strings
+  bool opposite_direction = 3;
+  repeated uint32 stops = 4;
+  uint32 shape_id = 5;
+}
+
+message Trips {
+  repeated Trip trips = 1;
+}
+
+/* This message encapsulates both trips and stop_times. */
+message Trip {
+  uint32 trip_id = 1; // renumbered
+  uint32 service_id = 2;
+  uint32 itinerary_id = 3; // for properties and order of stops.
+  string short_name = 4;
+  Accessibility wheelchair = 5;
+  Accessibility bikes = 6;
+  bool approximate = 7;
+
+  // Granularity is 5 seconds.
+  // First number is (hours * 720) + (minutes * 12) + (seconds / 5), rounded.
+  // After that, differences from previous time.
+  // Mind the accumulated rounding error!
+  repeated uint32 arrivals = 8;
+  repeated uint32 departures = 9; // counted from same arrivals, empty if all zeroes
+
+  repeated PickupDropoff pickup_types = 10;
+  repeated PickupDropoff dropoff_types = 11;
+
+  // For frequency-based trips, field 8 is empty, and those three are present.
+  // Granularity is 1 minute. Values are, hours * 60 + minutes.
+  uint32 start_time = 12;
+  uint32 end_time = 13;
+  // Here, granularity is 1 seconds, like in GTFS. No point in saving a byte.
+  uint32 interval = 14;
+}
+
+message Transfers {
+  repeated Transfer transfers = 1;
+}
+
+message Transfer {
+  uint32 from_stop_id = 1;
+  uint32 to_stop_id = 2;
+  uint32 from_route_id = 3;
+  uint32 to_route_id = 4;
+  uint32 from_trip_id = 5;
+  uint32 to_trip_id = 6;
+  TransferType type = 7;
+  uint32 min_transfer_time = 8; // granularity is 5 seconds, rounded up (!)
+}
+
+enum TransferType {
+  POSSIBLE = 0;
+  DEPARTURE_WAITS = 1;
+  NEEDS_TIME = 2;
+  NOT_POSSIBLE = 3;
+  IN_SEAT = 4;
+  IN_SEAT_FORBIDDEN = 5;
+}
+
+// TODO: Fares V1
+// TODO: Fares V2
+
+
+/* IdStore is for keeping track of source identifiers and making
+extracts between versions consistent. It's not a part of the GTFS
+protobuf extract, but of course can be published. */
+
+message IdStore {
+    uint32 version = 1;
+    repeated IdReference refs = 2;
+    repeated string strings = 3;
+}
+
+message IdReference {
+    Block block = 1;
+    repeated string ids = 2;
+}
+
+// These go in the file order.
+enum Block {
+    B_HEADER = 0;
+    B_AGENCY = 1;
+    B_CALENDAR = 2;
+    B_SHAPES = 3;
+    B_NETWORKS = 4;
+    B_AREAS = 5;
+    B_STRINGS = 6;
+    B_STOPS = 7;
+    B_ROUTES = 8;
+    B_TRIPS = 9;
+    B_TRANSFERS = 10;
+    B_FARES_V1 = 11;
+    B_FARES_V2 = 12;
+    // Following blocks are not actually written, but needed for indexing.
+    B_ITINERARIES = 13;
+    B_ZONES = 14;
+}
