@@ -18,7 +18,7 @@ class ShapesPacker(BasePacker):
             return self.prepare(f)
 
     def prepare(self, fileobj: TextIO) -> bytes:
-        last_point: tuple[int, int] = [0, 0]
+        last_point: tuple[int, int] = (0, 0)
 
         def pack_points(points: list[tuple[int, int, int]]) -> tuple[list[int], list[int]]:
             nonlocal last_point
@@ -28,7 +28,7 @@ class ShapesPacker(BasePacker):
             for i in range(1, len(points)):
                 for j in (0, 1):
                     pts[j].append(points[i][j] - points[i-1][j])
-            last_point = points[-1]
+            last_point = points[-1][:2]
             return pts
 
         # First build the points.

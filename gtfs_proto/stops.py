@@ -16,7 +16,7 @@ class StopsPacker(BasePacker):
         stop_areas: dict[str, int] = {}
         if self.has_file('stop_areas'):
             with self.open_table('stop_areas') as f:
-                stop_areas = self.read_route_networks(f)
+                stop_areas = self.read_stop_areas(f)
         with self.open_table('stops') as f:
             return self.prepare(f, stop_areas)
 
