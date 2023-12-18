@@ -18,12 +18,17 @@ class ShapesPacker(BasePacker):
             return self.prepare(f)
 
     def prepare(self, fileobj: TextIO) -> bytes:
+        last_point: tuple[int, int] = [0, 0]
+
         def pack_points(points: list[tuple[int, int, int]]) -> tuple[list[int], list[int]]:
+            nonlocal last_point
             points.sort(key=lambda pt: pt[2])
-            pts: tuple[list[int], list[int]] = ([points[0][0]], [points[0][1]])
+            pts: tuple[list[int], list[int]] = (
+                [points[0][0] - last_point[0]], [points[0][1] - last_point[1]])
             for i in range(1, len(points)):
                 for j in (0, 1):
-                    pts[j].append(points[i][j] - pts[j][-1])
+                    pts[j].append(points[i][j] - points[i-1][j])
+            last_point = points[-1]
             return pts
 
         # First build the points.
