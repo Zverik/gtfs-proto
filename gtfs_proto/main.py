@@ -8,6 +8,7 @@ from .calendar import CalendarPacker
 from .shapes import ShapesPacker
 from .stops import StopsPacker
 from .routes import RoutesPacker
+from .trips import TripsPacker
 
 
 def main():
@@ -19,9 +20,9 @@ def main():
                         help='Last id storage for keeping ids consistent')
     parser.add_argument('-i', '--id',
                         help='Resuling id storage file for keeping generated ids same. '
-                        'Use % for version')
+                        'Use %% for version')
     parser.add_argument('-o', '--output', required=True,
-                        help='Output protobuf file. Use % for version')
+                        help='Output protobuf file. Use %% for version')
     parser.add_argument('-z', '--zip', action='store_true',
                         help='Compress data blocks')
     options = parser.parse_args()
@@ -39,7 +40,9 @@ def main():
         blocks.run(NetworksPacker(z, store))
         blocks.run(AreasPacker(z, store))
         blocks.run(StopsPacker(z, store))
-        blocks.run(RoutesPacker(z, store))
+        r = RoutesPacker(z, store)  # reads itineraries
+        blocks.run(r)
+        blocks.run(TripsPacker(z, store, r.trip_itineraries))
 
     if blocks.not_empty:
         blocks.add(gtfs.B_STRINGS, gtfs.StringTable(

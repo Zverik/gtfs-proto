@@ -1,12 +1,39 @@
 from .base import BasePacker, FeedCache
 from typing import TextIO
 from zipfile import ZipFile
+from csv import DictReader
+from collections import defaultdict
+from hashlib import sha1
 from . import gtfs_pb2 as gtfs
+
+
+class Trip:
+    def __init__(self, trip_id: int, row: dict[str, str],
+                 stops: list[int], shape_id: int | None):
+        self.trip_id = trip_id
+        self.headsign = row.get('trip_headsign')
+        self.opposite = row.get('direction_id') == '1'
+        self.stops = stops
+        self.shape_id = shape_id
+
+        # Generate stops key.
+        m = sha1(usedforsecurity=False)
+        for s in stops:
+            m.update(s.to_bytes(4))
+        self.stops_key = m.hexdigest()
+
+    def __hash__(self) -> int:
+        return hash(self.stops_key)
+
+    def __eq__(self, other):
+        return self.stops_key == other.stops_key
 
 
 class RoutesPacker(BasePacker):
     def __init__(self, z: ZipFile, store: FeedCache):
         super().__init__(z, store)
+        # trip_id → itinerary_id
+        self.trip_itineraries: dict[int, int] = {}
 
     @property
     def block(self):
@@ -17,16 +44,25 @@ class RoutesPacker(BasePacker):
         if self.has_file('route_networks'):
             with self.open_table('route_networks') as f:
                 route_networks = self.read_route_networks(f)
+        with self.open_table('stop_times') as f:
+            trip_stops = self.read_trip_stops(f)
+        with self.open_table('trips') as f:
+            itineraries, self.trip_itineraries = self.read_itineraries(f, trip_stops)
         with self.open_table('routes') as f:
-            return self.prepare(f, route_networks)
+            return self.prepare(f, route_networks, itineraries)
 
     def prepare(self, fileobj: TextIO,
-                route_networks: dict[str, int]) -> bytes:
+                route_networks: dict[str, int],
+                itineraries: dict[str, list[gtfs.RouteItinerary]]) -> bytes:
         routes = gtfs.Routes()
         agency_ids = self.id_store[gtfs.B_AGENCY]
         network_ids = self.id_store[gtfs.B_NETWORKS]
         for row, route_id, orig_route_id in self.table_reader(fileobj, 'route_id'):
-            route = gtfs.Route(route_id=route_id)
+            # Skip routes for which we don't have any trips.
+            if orig_route_id not in itineraries:
+                continue
+
+            route = gtfs.Route(route_id=route_id, itineraries=itineraries[orig_route_id])
             if row.get('agency_id'):
                 route.agency_id = agency_ids[row['agency_id']]
 
@@ -50,7 +86,6 @@ class RoutesPacker(BasePacker):
             route.continuous_pickup = self.parse_pickup_dropoff(row.get('continuous_pickup'))
             route.continuous_dropoff = self.parse_pickup_dropoff(row.get('continuous_drop_off'))
 
-            # TODO: Itineraries empty for now.
             routes.routes.append(route)
         return routes.SerializeToString()
 
@@ -59,6 +94,64 @@ class RoutesPacker(BasePacker):
         for row, network_id, _ in self.table_reader(fileobj, 'network_id', gtfs.B_NETWORKS):
             result[row['route_id']] = network_id
         return result
+
+    def read_itineraries(self, fileobj: TextIO, trip_stops: dict[str, list[int]]
+                         ) -> tuple[dict[str, list[gtfs.RouteItinerary]], dict[int, int]]:
+        trips: dict[str, list[Trip]] = defaultdict(list)  # route_id -> list[Trip]
+        for row, trip_id, orig_trip_id in self.table_reader(fileobj, 'trip_id', gtfs.B_TRIPS):
+            stops = trip_stops.get(orig_trip_id)
+            if not stops:
+                continue
+            shape_id = (None if not row.get('shape_id')
+                        else self.id_store[gtfs.B_SHAPES].ids[row['shape_id']])
+            trips[row['route_id']].append(Trip(trip_id, row, stops, shape_id))
+
+        # Now we have a list of itinerary-type trips which we need to deduplicate.
+        # Note: since we don't have original ids, we need to keep them stable.
+        # Since the only thing that matters is an order of stops, we use stops' hash as the key.
+
+        result: dict[str, list[gtfs.RouteItinerary]] = defaultdict(list)
+        trip_itineraries: dict[int, int] = {}
+        ids = self.id_store[gtfs.B_ITINERARIES]
+
+        for route_id, trip_list in trips.items():
+            for trip in set(trip_list):
+                itin = gtfs.RouteItinerary(
+                    itinerary_id=ids.add(trip.stops_key),
+                    opposite_direction=trip.opposite,
+                    stops=trip.stops,
+                    shape_id=trip.shape_id,
+                )
+                if trip.headsign:
+                    itin.headsign = self.strings.add(trip.headsign)
+
+                result[route_id].append(itin)
+                for t in trip_list:
+                    if t.stops_key == trip.stops_key:
+                        trip_itineraries[t.trip_id] = itin.itinerary_id
+
+        return result, trip_itineraries
+
+    def read_trip_stops(self, fileobj: TextIO) -> dict[str, list[int]]:
+        trip_stops: dict[str, list[int]] = {}  # trip_id -> int_stop_id
+        cur_trip: str = ''
+        cur_stops: list[tuple[int, int]] = []
+        for row in DictReader(fileobj):
+            if row['trip_id'] != cur_trip:
+                if cur_stops and cur_trip:
+                    cur_stops.sort(key=lambda s: s[0])
+                    trip_stops[cur_trip] = [s[1] for s in cur_stops]
+                cur_trip = row['trip_id']
+                cur_stops = []
+            cur_stops.append((
+                int(row['stop_sequence']),
+                # The stop should be already in the table.
+                self.id_store[gtfs.B_STOPS].ids[row['stop_id']],
+            ))
+        if cur_stops and cur_trip:
+            cur_stops.sort(key=lambda s: s[0])
+            trip_stops[cur_trip] = [s[1] for s in cur_stops]
+        return trip_stops
 
     def route_type_to_enum(self, t: int) -> int:
         if t == 0 or t // 100 == 9:
