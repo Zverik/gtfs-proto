@@ -140,6 +140,9 @@ class RoutesPacker(BasePacker):
             if row['trip_id'] != cur_trip:
                 if cur_stops and cur_trip:
                     cur_stops.sort(key=lambda s: s[0])
+                    if cur_trip in trip_stops:
+                        raise ValueError(
+                            f'Unsorted stop_times.txt, trip {cur_trip} is in two parts')
                     trip_stops[cur_trip] = [s[1] for s in cur_stops]
                 cur_trip = row['trip_id']
                 cur_stops = []

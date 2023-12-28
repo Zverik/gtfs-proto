@@ -265,9 +265,12 @@ message Trip {
   // First number is (hours * 720) + (minutes * 12) + (seconds / 5), rounded.
   // After that, differences from previous time.
   // Mind the accumulated rounding error!
+  // Zero (0) for an arrival means an absent value.
   repeated uint32 arrivals = 8;
-  repeated uint32 departures = 9; // counted from same arrivals, empty if all zeroes
+  // Counted from same arrivals, truncated to the last non-zero value.
+  repeated uint32 departures = 9;
 
+  // Both truncated to the last non-empty value.
   repeated PickupDropoff pickup_types = 10;
   repeated PickupDropoff dropoff_types = 11;
 
