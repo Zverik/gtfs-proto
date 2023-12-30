@@ -32,14 +32,13 @@ class ShapesPacker(BasePacker):
             return pts
 
         # First build the points.
-        ids = self.ids
         shapes: list[tuple[int, list[int], list[int]]] = []
         points: list[tuple[int, int, int]] = []
         cur_shape: str | None = None
         for row in DictReader(fileobj):
             if cur_shape != row['shape_id']:
                 if len(points) >= 2 and cur_shape:
-                    shapes.append((ids.add(cur_shape), *pack_points(points)))
+                    shapes.append((self.ids.add(cur_shape), *pack_points(points)))
                 cur_shape = row['shape_id']
                 points = []
             points.append((
@@ -48,7 +47,7 @@ class ShapesPacker(BasePacker):
                 int(row['shape_pt_sequence']),
             ))
         if len(points) >= 2 and cur_shape:
-            shapes.append((ids.add(cur_shape), *pack_points(points)))
+            shapes.append((self.ids.add(cur_shape), *pack_points(points)))
 
         sh = gtfs.Shapes()
         for shape in shapes:

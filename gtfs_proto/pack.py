@@ -9,11 +9,12 @@ from .shapes import ShapesPacker
 from .stops import StopsPacker
 from .routes import RoutesPacker
 from .trips import TripsPacker
+from .transfers import TransfersPacker
 
 
-def main():
+def pack():
     parser = argparse.ArgumentParser(
-        description='Converts GTFS feed into a protobuf-compressed version, with deltas')
+        description='Converts GTFS feed into a protobuf-compressed version')
     parser.add_argument('input', help='Input zipped gtfs file')
     parser.add_argument('-u', '--url', help='URL to the original feed')
     parser.add_argument('-p', '--prev-id', type=argparse.FileType('rb'),
@@ -31,6 +32,9 @@ def main():
     version = store.load(options.prev_id)
     header = gtfs.GtfsHeader()
     header.version = version + 1
+    header.compressed = options.zip
+    if options.url:
+        header.original_url = options.url
     blocks = GtfsBlocks(header, options.zip)
 
     with ZipFile(options.input, 'r') as z:
@@ -43,12 +47,12 @@ def main():
         r = RoutesPacker(z, store)  # reads itineraries
         blocks.run(r)
         blocks.run(TripsPacker(z, store, r.trip_itineraries))
+        blocks.run(TransfersPacker(z, store))
 
     if blocks.not_empty:
         blocks.add(gtfs.B_STRINGS, gtfs.StringTable(
             strings=store.strings.strings).SerializeToString())
         blocks.populate_header(header)
-        print(header)  # TODO: remove this
 
         fn = options.output.replace('%', str(header.version))
         with open(fn, 'wb') as f:
@@ -61,7 +65,3 @@ def main():
             fn = options.id.replace('%', str(header.version))
             with open(fn, 'wb') as f:
                 f.write(store.store(header.version))
-
-
-if __name__ == '__main__':
-    main()

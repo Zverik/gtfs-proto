@@ -43,24 +43,8 @@ message GtfsHeader {
   // TODO: maybe leave the compression to external tools, on a file level?
   bool compressed = 3;
 
-  // First, dictionaries that are referenced by other tables.
-  uint32 agency = 4; // referenced from routes and fares
-  uint32 calendar = 5; // referenced from trips and fares
-  uint32 shapes = 6; // referenced from trips
-  uint32 networks = 7; // references from routes
-  uint32 areas = 8; // referenced from stops and fares
-  uint32 strings = 9; // referenced from stops, routes, trips
-
-  // And here, the core: stops, routes, and fares.
-  uint32 stops = 10;
-  uint32 routes = 11;
-  uint32 trips = 12; // depends on route_id and service_id (calendar)
-  uint32 transfers = 13; // depends on stop_id, route_id, trip_id
-
-  oneof fares {
-    uint32 fares_v1 = 14;
-    uint32 fares_v2 = 15;
-  }
+  // Array in order and matching the Blocks enum.
+  repeated uint32 blocks = 4;
 }
 
 /* All identifiers are renumbered, starting from 1.
@@ -287,23 +271,23 @@ message Transfers {
 }
 
 message Transfer {
-  uint32 from_stop_id = 1;
-  uint32 to_stop_id = 2;
-  uint32 from_route_id = 3;
-  uint32 to_route_id = 4;
-  uint32 from_trip_id = 5;
-  uint32 to_trip_id = 6;
+  uint32 from_stop = 1;
+  uint32 to_stop = 2;
+  uint32 from_route = 3;
+  uint32 to_route = 4;
+  uint32 from_trip = 5;
+  uint32 to_trip = 6;
   TransferType type = 7;
   uint32 min_transfer_time = 8; // granularity is 5 seconds, rounded up (!)
 }
 
 enum TransferType {
-  POSSIBLE = 0;
-  DEPARTURE_WAITS = 1;
-  NEEDS_TIME = 2;
-  NOT_POSSIBLE = 3;
-  IN_SEAT = 4;
-  IN_SEAT_FORBIDDEN = 5;
+  T_POSSIBLE = 0;
+  T_DEPARTURE_WAITS = 1;
+  T_NEEDS_TIME = 2;
+  T_NOT_POSSIBLE = 3;
+  T_IN_SEAT = 4;
+  T_IN_SEAT_FORBIDDEN = 5;
 }
 
 // TODO: Fares V1
@@ -328,18 +312,23 @@ message IdReference {
 // These go in the file order.
 enum Block {
     B_HEADER = 0;
+
+    // First, dictionaries that are referenced by other tables.
     B_AGENCY = 1;
     B_CALENDAR = 2;
     B_SHAPES = 3;
     B_NETWORKS = 4;
     B_AREAS = 5;
     B_STRINGS = 6;
+
+    // And here, the core: stops, routes, and fares.
     B_STOPS = 7;
     B_ROUTES = 8;
     B_TRIPS = 9;
     B_TRANSFERS = 10;
     B_FARES_V1 = 11;
     B_FARES_V2 = 12;
+
     // Following blocks are not actually written, but needed for indexing.
     B_ITINERARIES = 13;
     B_ZONES = 14;

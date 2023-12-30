@@ -52,6 +52,13 @@ class IdReference:
             self.ids[k] = self.last_id
         return self.ids[k]
 
+    def get(self, k: str | None, misses: bool = False) -> int | None:
+        if not k:
+            return None
+        if misses:
+            return self.ids.get(k)
+        return self.ids[k]
+
     def to_list(self) -> list[str]:
         idstrings = [''] * (self.last_id + 1)
         for s, i in self.ids.items():
@@ -137,18 +144,12 @@ class GtfsBlocks:
         self.compress = compress
 
     def populate_header(self, header: gtfs.GtfsHeader):
-        header.agency = len(self.blocks.get(gtfs.B_AGENCY, b''))
-        header.calendar = len(self.blocks.get(gtfs.B_CALENDAR, b''))
-        header.shapes = len(self.blocks.get(gtfs.B_SHAPES, b''))
-        header.networks = len(self.blocks.get(gtfs.B_NETWORKS, b''))
-        header.areas = len(self.blocks.get(gtfs.B_AREAS, b''))
-        header.strings = len(self.blocks.get(gtfs.B_STRINGS, b''))
-        header.stops = len(self.blocks.get(gtfs.B_STOPS, b''))
-        header.routes = len(self.blocks.get(gtfs.B_ROUTES, b''))
-        header.trips = len(self.blocks.get(gtfs.B_TRIPS, b''))
-        header.transfers = len(self.blocks.get(gtfs.B_TRANSFERS, b''))
-        # header.fares_v1 = len(self.blocks.get(gtfs.B_FARES_V1, b''))
-        # header.fares_v2 = len(self.blocks.get(gtfs.B_FARES_V2, b''))
+        # This version of protobuf doesn't have the "clear()" method for repeated fields.
+        while header.blocks:
+            header.blocks.pop()
+        for b in gtfs.Block.values():
+            if 0 < b < gtfs.B_ITINERARIES:
+                header.blocks.append(len(self.blocks.get(b, b'')))
 
     @property
     def not_empty(self):
@@ -160,7 +161,7 @@ class GtfsBlocks:
 
     def archive_if(self, data: bytes):
         if self.compress:
-            arch = zstandard.ZstdCompressor(level=10, write_content_size=False)
+            arch = zstandard.ZstdCompressor(level=10)
             return arch.compress(data)
         return data
 
@@ -168,8 +169,6 @@ class GtfsBlocks:
         if not data:
             return
         self.blocks[block] = self.archive_if(data)
-        if self.header:
-            self.populate_header(self.header)
 
     def run(self, packer: BasePacker):
         self.add(packer.block, packer.pack())
