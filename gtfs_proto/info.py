@@ -5,6 +5,7 @@ import zstandard
 import io
 import json
 from . import gtfs_pb2 as gtfs
+from typing import Any
 
 
 BLOCKS = {
@@ -21,6 +22,54 @@ BLOCKS = {
 }
 
 
+def read_count(block: gtfs.Block, data: bytes) -> dict[str, Any]:
+    COUNT = 'count'
+    if block == gtfs.B_AGENCY:
+        agencies = gtfs.Agencies()
+        agencies.ParseFromString(data)
+        return {COUNT: len(agencies.agencies)}
+    elif block == gtfs.B_CALENDAR:
+        calendar = gtfs.Calendar()
+        calendar.ParseFromString(data)
+        return {'dates': len(calendar.dates), COUNT: len(calendar.services)}
+    elif block == gtfs.B_SHAPES:
+        shapes = gtfs.Shapes()
+        shapes.ParseFromString(data)
+        return {COUNT: len(shapes.shapes)}
+    elif block == gtfs.B_NETWORKS:
+        networks = gtfs.Networks()
+        networks.ParseFromString(data)
+        return {COUNT: len(networks.networks)}
+    elif block == gtfs.B_AREAS:
+        areas = gtfs.Areas()
+        areas.ParseFromString(data)
+        return {COUNT: len(areas.areas)}
+    elif block == gtfs.B_STRINGS:
+        strings = gtfs.StringTable()
+        strings.ParseFromString(data)
+        return {COUNT: len(strings.strings)}
+    elif block == gtfs.B_STOPS:
+        stops = gtfs.Stops()
+        stops.ParseFromString(data)
+        return {COUNT: len(stops.stops)}
+    elif block == gtfs.B_ROUTES:
+        routes = gtfs.Routes()
+        routes.ParseFromString(data)
+        return {
+            COUNT: len(routes.routes),
+            'itineraries': sum(len(r.itineraries) for r in routes.routes)
+        }
+    elif block == gtfs.B_TRIPS:
+        trips = gtfs.Trips()
+        trips.ParseFromString(data)
+        return {COUNT: len(trips.trips)}
+    elif block == gtfs.B_TRANSFERS:
+        tr = gtfs.Transfers()
+        tr.ParseFromString(data)
+        return {COUNT: len(tr.transfers)}
+    return {}
+
+
 def print_header(header: gtfs.GtfsHeader, fileobj: io.BytesIO):
     print(json.dumps({
         'version': header.version,
@@ -28,19 +77,16 @@ def print_header(header: gtfs.GtfsHeader, fileobj: io.BytesIO):
         'compressed': header.compressed,
     }))
     block_names = {v - 1: s for s, v in BLOCKS.items()}
+    arch = zstandard.ZstdDecompressor()
     for i in range(len(header.blocks)):
         if header.blocks[i] > 0:
             v = {'block': block_names[i], 'size': header.blocks[i]}
+            data = fileobj.read(header.blocks[i])
             if header.compressed:
-                arch = zstandard.ZstdDecompressor()
-                data = fileobj.read(header.blocks[i])
-                fh = io.BytesIO(data)
-                size = 0
-                for chunk in arch.read_to_iter(fh):
-                    size += len(chunk)
-                fh.close()
+                data = arch.decompress(data)
                 v['compressed'] = v['size']
-                v['size'] = size
+                v['size'] = len(data)
+            v.update(read_count(i + 1, data))
             print(json.dumps(v))
 
 
