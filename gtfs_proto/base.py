@@ -1,13 +1,7 @@
 import struct
 import zstandard
 from . import gtfs_pb2 as gtfs
-from abc import ABC, abstractmethod
-from collections.abc import Generator
-from contextlib import contextmanager
-from csv import DictReader
-from io import TextIOWrapper
-from typing import TextIO, BinaryIO
-from zipfile import ZipFile
+from typing import BinaryIO
 
 
 class StringCache:
@@ -15,7 +9,9 @@ class StringCache:
         self.strings: list[str] = source or ['']
         self.index: dict[str, int] = {s: i for i, s in enumerate(self.strings) if s}
 
-    def add(self, s: str) -> int:
+    def add(self, s: str | None) -> int:
+        if not s:
+            return 0
         i = self.index.get(s)
         if i:
             return i
@@ -113,80 +109,3 @@ class FeedCache:
                 idrefs = gtfs.IdReference(block=block, ids=ids.to_list())
                 idstore.refs.append(idrefs)
         return idstore.SerializeToString()
-
-
-class BasePacker(ABC):
-    def __init__(self, z: ZipFile, store: FeedCache):
-        self.z = z
-        self.id_store = store.id_store
-        self.strings = store.strings
-
-    @property
-    @abstractmethod
-    def block(self) -> int:
-        return gtfs.B_HEADER
-
-    @abstractmethod
-    def pack(self) -> bytes:
-        return b''
-
-    def has_file(self, name_part: str) -> bool:
-        return f'{name_part}.txt' in self.z.namelist()
-
-    @contextmanager
-    def open_table(self, name_part: str):
-        with self.z.open(f'{name_part}.txt', 'r') as f:
-            yield TextIOWrapper(f, encoding='utf-8-sig')
-
-    @property
-    def ids(self) -> IdReference:
-        return self.id_store[self.block]
-
-    def table_reader(self, fileobj: TextIO, id_column: str,
-                     ids_block: int | None = None
-                     ) -> Generator[tuple[dict, int, str], None, None]:
-        """Iterates over CSV rows and returns (row, our_id, source_id)."""
-        ids = self.id_store[ids_block or self.block]
-        for row in DictReader(fileobj):
-            yield (
-                {k: v.strip() for k, v in row.items()},
-                ids.add(row[id_column]),
-                row[id_column],
-            )
-
-
-class GtfsBlocks:
-    def __init__(self, header: gtfs.GtfsHeader | None = None, compress: bool = False):
-        self.blocks: dict[gtfs.Block, bytes] = {}
-        self.header = header
-        self.compress = compress
-
-    def populate_header(self, header: gtfs.GtfsHeader):
-        # This version of protobuf doesn't have the "clear()" method for repeated fields.
-        while header.blocks:
-            header.blocks.pop()
-        for b in gtfs.Block.values():
-            if 0 < b and b < gtfs.B_ITINERARIES:
-                header.blocks.append(len(self.blocks.get(b, b'')))
-
-    @property
-    def not_empty(self):
-        return any(self.blocks.values())
-
-    def __iter__(self):
-        for b in sorted(self.blocks):
-            yield self.blocks[b]
-
-    def archive_if(self, data: bytes):
-        if self.compress:
-            arch = zstandard.ZstdCompressor(level=10)
-            return arch.compress(data)
-        return data
-
-    def add(self, block: int, data: bytes):
-        if not data:
-            return
-        self.blocks[block] = self.archive_if(data)
-
-    def run(self, packer: BasePacker):
-        self.add(packer.block, packer.pack())

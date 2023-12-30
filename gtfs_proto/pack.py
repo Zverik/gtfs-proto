@@ -1,15 +1,51 @@
 import argparse
 import struct
+import zstandard
 from zipfile import ZipFile
 from . import gtfs_pb2 as gtfs
-from .base import FeedCache, GtfsBlocks
-from .packers import AgencyPacker, NetworksPacker, AreasPacker
-from .calendar import CalendarPacker
-from .shapes import ShapesPacker
-from .stops import StopsPacker
-from .routes import RoutesPacker
-from .trips import TripsPacker
-from .transfers import TransfersPacker
+from .base import FeedCache
+from .packers import (
+    BasePacker, AgencyPacker, NetworksPacker, AreasPacker,
+    CalendarPacker, ShapesPacker, StopsPacker,
+    RoutesPacker, TripsPacker, TransfersPacker,
+)
+
+
+class GtfsBlocks:
+    def __init__(self, header: gtfs.GtfsHeader | None = None, compress: bool = False):
+        self.blocks: dict[gtfs.Block, bytes] = {}
+        self.header = header
+        self.compress = compress
+
+    def populate_header(self, header: gtfs.GtfsHeader):
+        # This version of protobuf doesn't have the "clear()" method for repeated fields.
+        while header.blocks:
+            header.blocks.pop()
+        for b in gtfs.Block.values():
+            if 0 < b and b < gtfs.B_ITINERARIES:
+                header.blocks.append(len(self.blocks.get(b, b'')))
+
+    @property
+    def not_empty(self):
+        return any(self.blocks.values())
+
+    def __iter__(self):
+        for b in sorted(self.blocks):
+            yield self.blocks[b]
+
+    def archive_if(self, data: bytes):
+        if self.compress:
+            arch = zstandard.ZstdCompressor(level=10)
+            return arch.compress(data)
+        return data
+
+    def add(self, block: int, data: bytes):
+        if not data:
+            return
+        self.blocks[block] = self.archive_if(data)
+
+    def run(self, packer: BasePacker):
+        self.add(packer.block, packer.pack())
 
 
 def pack():

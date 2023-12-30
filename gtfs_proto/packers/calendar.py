@@ -3,7 +3,7 @@ from typing import TextIO
 from datetime import date
 from .base import BasePacker, FeedCache
 from zipfile import ZipFile
-from . import gtfs_pb2 as gtfs
+from .. import gtfs_pb2 as gtfs
 from csv import DictReader
 
 

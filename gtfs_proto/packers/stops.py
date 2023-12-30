@@ -1,7 +1,7 @@
 from .base import BasePacker, FeedCache
 from typing import TextIO
 from zipfile import ZipFile
-from . import gtfs_pb2 as gtfs
+from .. import gtfs_pb2 as gtfs
 
 
 class StopsPacker(BasePacker):

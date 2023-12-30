@@ -3,7 +3,7 @@ from typing import TextIO
 from zipfile import ZipFile
 from csv import DictReader
 from math import ceil
-from . import gtfs_pb2 as gtfs
+from .. import gtfs_pb2 as gtfs
 
 
 class TransfersPacker(BasePacker):

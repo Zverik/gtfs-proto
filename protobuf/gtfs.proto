@@ -227,6 +227,10 @@ message RouteItinerary {
   bool opposite_direction = 3;
   repeated uint32 stops = 4;
   uint32 shape_id = 5;
+
+  // In case a bus changes its headsigns on a route.
+  // Zero when the same as the last. References strings.
+  repeated uint32 stop_headsigns = 6;
 }
 
 message Trips {
@@ -288,6 +292,17 @@ enum TransferType {
   T_IN_SEAT_FORBIDDEN = 5;
 }
 
+/* These lists extract area_id and zone_id from stops,
+and network_ids from routes, to easier decouple fares. */
+
+message FareLinks {
+    // Zero if the value is the same as the last one.
+    // Trailing zeroes are cut.
+    repeated uint32 stop_area_ids = 1;
+    repeated uint32 stop_zone_ids = 2;
+    repeated uint32 route_network_ids = 3;
+}
+
 // TODO: Fares
 
 
@@ -317,11 +332,12 @@ enum Block {
     B_AREAS = 7;    // Areas
 
     // And here, the core: stops, routes, and fares.
-    B_STOPS = 8;      // Stops → Stop
-    B_ROUTES = 9;     // Routes → Route
-    B_TRIPS = 10;     // Trips → Trip
-    B_TRANSFERS = 11; // Transfers → Transfer
-    B_FARES = 12;     // TODO
+    B_STOPS = 8;       // Stops → Stop
+    B_ROUTES = 9;      // Routes → Route
+    B_TRIPS = 10;      // Trips → Trip
+    B_TRANSFERS = 11;  // Transfers → Transfer
+    B_FARE_LINKS = 12; // FareLinks
+    B_FARES = 13;      // TODO
 
     // Following blocks are not actually written, but needed for indexing.
     B_ITINERARIES = 14;

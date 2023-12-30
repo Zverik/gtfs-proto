@@ -1,6 +1,6 @@
 from zipfile import ZipFile
 from .base import BasePacker, FeedCache
-from . import gtfs_pb2 as gtfs
+from .. import gtfs_pb2 as gtfs
 
 
 class AgencyPacker(BasePacker):
