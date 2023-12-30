@@ -128,7 +128,7 @@ def print_calendar(c: gtfs.Calendar):
         }))
 
 
-def print_shapes(s: gtfs.TripShape):
+def print_shape(s: gtfs.TripShape):
     print(json.dumps({
         'shape_id': s.shape_id,
         'longitudes': list(s.longitudes),
@@ -203,6 +203,42 @@ def print_route(r: gtfs.Route):
     })
 
 
+def print_trip(t: gtfs.Trip):
+    ACC_TYPES = ['unknown', 'some', 'no']
+    PD_TYPES = ['no', 'yes', 'phone_agency', 'tell_driver']
+    print_skip_empty({
+        'trip_id': t.trip_id,
+        'service_id': t.service_id,
+        'itinerary_id': t.itinerary_id,
+        'short_name': t.short_name,
+        'wheelchair': None if not t.wheelchair else ACC_TYPES[t.wheelchair],
+        'bikes': None if not t.bikes else ACC_TYPES[t.bikes],
+        'approximate': t.approximate or None,
+        'arrivals': list(t.arrivals) or None,
+        'departures': list(t.departures) or None,
+        'pickup_types': [PD_TYPES[p] for p in t.pickup_types] or None,
+        'dropoff_types': [PD_TYPES[p] for p in t.dropoff_types] or None,
+        'start_time': t.start_time or None,
+        'end_time': t.end_time or None,
+        'interval': t.interval or None,
+    })
+
+
+def print_transfer(t: gtfs.Transfer):
+    TTYPES = ['possible', 'departure_waits', 'needs_time', 'not_possible',
+              'in_seat', 'in_seat_forbidden']
+    print_skip_empty({
+        'from_stop': t.from_stop or None,
+        'to_stop': t.to_stop or None,
+        'from_route': t.from_route or None,
+        'to_route': t.to_route or None,
+        'from_trip': t.from_trip or None,
+        'to_trip': t.to_trip or None,
+        'type': None if not t.type else TTYPES[t.type],
+        'min_transfer_time': t.min_transfer_time or None,
+    })
+
+
 def print_part(part: gtfs.Block, data: bytes):
     if part == gtfs.B_AGENCY:
         agencies = gtfs.Agencies()
@@ -217,7 +253,7 @@ def print_part(part: gtfs.Block, data: bytes):
         shapes = gtfs.Shapes()
         shapes.ParseFromString(data)
         for s in shapes.shapes:
-            print_shapes(shapes)
+            print_shape(shapes)
     elif part == gtfs.B_NETWORKS:
         networks = gtfs.Networks()
         networks.ParseFromString(data)
@@ -240,6 +276,16 @@ def print_part(part: gtfs.Block, data: bytes):
         routes.ParseFromString(data)
         for r in routes.routes:
             print_route(r)
+    elif part == gtfs.B_TRIPS:
+        trips = gtfs.Trips()
+        trips.ParseFromString(data)
+        for t in trips.trips:
+            print_trip(t)
+    elif part == gtfs.B_TRANSFERS:
+        transfers = gtfs.Transfers()
+        transfers.ParseFromString(data)
+        for t in transfers.transfers:
+            print_transfer(t)
     else:
         print('Sorry, printing blocks of this type is not implemented yet.', file=sys.stderr)
 

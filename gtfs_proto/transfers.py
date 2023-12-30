@@ -2,6 +2,7 @@ from .base import BasePacker, FeedCache
 from typing import TextIO
 from zipfile import ZipFile
 from csv import DictReader
+from math import ceil
 from . import gtfs_pb2 as gtfs
 
 
@@ -53,7 +54,7 @@ class TransfersPacker(BasePacker):
 
             transfer_time = row.get('min_transfer_time')
             if transfer_time and transfer_time.strip():
-                t.min_transfer_time = int(transfer_time.strip())
+                t.min_transfer_time = ceil(float(transfer_time.strip()) / 5)
             t.type = self.parse_transfer_type(row['transfer_type'])
             transfers.append(t)
         return gtfs.Transfers(transfers=transfers).SerializeToString()
