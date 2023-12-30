@@ -81,6 +81,8 @@ class RoutesPacker(BasePacker):
             route.type = self.route_type_to_enum(int(row['route_type']))
             if row.get('route_color', '') and row['route_color'].upper() != 'FFFFFF':
                 route.color = int(row['route_color'], 16)
+                if route.color == 0:
+                    route.color = 0xFFFFFF
             if row.get('route_text_color', '') and row['route_text_color'] != '000000':
                 route.text_color = int(row['route_text_color'], 16)
             route.continuous_pickup = self.parse_pickup_dropoff(row.get('continuous_pickup'))

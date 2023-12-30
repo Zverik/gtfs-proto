@@ -100,8 +100,6 @@ message CalendarService {
 }
 
 message Shapes {
-  sint32 base_longitude = 1; // usually the first coordinate
-  sint32 base_latitude = 2; // usually the first coordinate;
   repeated TripShape shapes = 3;
 }
 
@@ -111,7 +109,7 @@ message TripShape {
   // Numbers multiplied by 100000 (1e5) and rounded.
   // Mind the accumulated rounding error!
   // Each number is the difference with the last.
-  // First is difference with the base or the last from the last shape.
+  // First is difference with 0 or the last from the last shape.
   repeated sint32 longitudes = 2;
   repeated sint32 latitudes = 3;
 }

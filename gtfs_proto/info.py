@@ -70,12 +70,19 @@ def read_count(block: gtfs.Block, data: bytes) -> dict[str, Any]:
     return {}
 
 
+def print_skip_empty(d: dict[str, Any]):
+    print(json.dumps(
+        {k: v for k, v in d.items() if v is not None and v != ''},
+        ensure_ascii=False
+    ))
+
+
 def print_header(header: gtfs.GtfsHeader, fileobj: io.BytesIO):
-    print(json.dumps({
+    print_skip_empty({
         'version': header.version,
         'original_url': header.original_url,
         'compressed': header.compressed,
-    }))
+    })
     block_names = {v - 1: s for s, v in BLOCKS.items()}
     arch = zstandard.ZstdDecompressor()
     for i in range(len(header.blocks)):
@@ -91,7 +98,7 @@ def print_header(header: gtfs.GtfsHeader, fileobj: io.BytesIO):
 
 
 def print_agency(a: gtfs.Agency):
-    r = {
+    print_skip_empty({
         'agency_id': a.agency_id,
         'name': a.name,
         'url': a.url,
@@ -100,8 +107,7 @@ def print_agency(a: gtfs.Agency):
         'phone': a.phone,
         'fare_url': a.fare_url,
         'email': a.email,
-    }
-    print(json.dumps({k: v for k, v in r.items() if v}, ensure_ascii=False))
+    })
 
 
 def print_calendar(c: gtfs.Calendar):
@@ -114,25 +120,87 @@ def print_calendar(c: gtfs.Calendar):
     for s in c.services:
         print(json.dumps({
             'service_id': s.service_id,
-            'start_date': s.start_date,
-            'end_date': s.end_date,
+            'start_date': None if not s.start_date else s.start_date,
+            'end_date': None if not s.end_date else s.end_date,
             'weekdays': f'{s.weekdays:#b}',
-            'added_days': s.added_days,
-            'removed_days': s.removed_days,
+            'added_days': None if not s.added_days else s.added_days,
+            'removed_days': None if not s.removes_days else s.removed_days,
         }))
 
 
-def print_shapes(shapes: gtfs.Shapes):
+def print_shapes(s: gtfs.TripShape):
     print(json.dumps({
-        'base_longitude': shapes.base_longitude,
-        'base_latitude': shapes.base_latitude,
+        'shape_id': s.shape_id,
+        'longitudes': list(s.longitudes),
+        'latitudes': list(s.latitudes),
     }))
-    for s in shapes.shapes:
-        print(json.dumps({
-            'shape_id': s.shape_id,
-            'longitudes': list(s.longitudes),
-            'latitudes': list(s.latitudes),
-        }))
+
+
+def print_stop(s: gtfs.Stop):
+    LOC_TYPES = ['stop', 'station', 'exit', 'node', 'boarding']
+    ACC_TYPES = ['unknown', 'some', 'no']
+    print_skip_empty({
+        'stop_id': s.stop_id,
+        'code': s.code,
+        'name': s.name,
+        'desc': s.desc,
+        'lon': s.lon,
+        'lat': s.lat,
+        'zone_id': s.zone_id or None,
+        'area_id': s.area_id or None,
+        'type': None if not s.type else LOC_TYPES[s.type],
+        'parent_id': s.parent_id or None,
+        'wheelchair': None if not s.wheelchair else ACC_TYPES[s.wheelchair],
+        'platform_code': s.platform_code,
+        'external_str_id': s.external_str_id,
+        'external_int_id': s.external_int_id or None,
+    })
+
+
+def print_route(r: gtfs.Route):
+    def prepare_itinerary(i: gtfs.RouteItinerary) -> dict[str, Any]:
+        return {k: v for k, v in {
+            'itinerary_id': i.itinerary_id,
+            'headsign': i.headsign or None,
+            'opposite_direction': i.opposite_direction or None,
+            'stops': list(i.stops),
+            'shape_id': i.shape_id or None,
+        }.items() if v is not None}
+
+    ROUTE_TYPES = {
+        0: 'bus',
+        1: 'tram',
+        2: 'subway',
+        3: 'rail',
+        4: 'ferry',
+        5: 'cable_tram',
+        6: 'aerial',
+        7: 'funicular',
+        9: 'communal_taxi',
+        10: 'coach',
+        11: 'trolleybus',
+        12: 'monorail',
+        21: 'urban_rail',
+        22: 'water',
+        23: 'air',
+        24: 'taxi',
+        25: 'misc',
+    }
+    PD_TYPES = ['no', 'yes', 'phone_agency', 'tell_driver']
+    print_skip_empty({
+        'route_id': r.route_id,
+        'agency_id': r.agency_id,
+        'network_id': r.network_id or None,
+        'short_name': r.short_name,
+        'long_name': list(r.long_name),
+        'desc': r.desc,
+        'type': ROUTE_TYPES[r.type],
+        'color': None if not r.color else f'{r.color:#08x}',
+        'text_color': None if not r.text_color else f'{r.text_color:#08x}',
+        'continuous_pickup': None if not r.continuous_pickup else PD_TYPES[r.continuous_pickup],
+        'continuous_dropoff': None if not r.continuous_dropoff else PD_TYPES[r.continuous_dropoff],
+        'itineraries': [prepare_itinerary(i) for i in r.itineraries],
+    })
 
 
 def print_part(part: gtfs.Block, data: bytes):
@@ -148,7 +216,8 @@ def print_part(part: gtfs.Block, data: bytes):
     elif part == gtfs.B_SHAPES:
         shapes = gtfs.Shapes()
         shapes.ParseFromString(data)
-        print_shapes(shapes)
+        for s in shapes.shapes:
+            print_shapes(shapes)
     elif part == gtfs.B_NETWORKS:
         networks = gtfs.Networks()
         networks.ParseFromString(data)
@@ -161,6 +230,16 @@ def print_part(part: gtfs.Block, data: bytes):
         strings = gtfs.StringTable()
         strings.ParseFromString(data)
         print(json.dumps({i: s for i, s in enumerate(strings.strings)}, ensure_ascii=False))
+    elif part == gtfs.B_STOPS:
+        stops = gtfs.Stops()
+        stops.ParseFromString(data)
+        for s in stops.stops:
+            print_stop(s)
+    elif part == gtfs.B_ROUTES:
+        routes = gtfs.Routes()
+        routes.ParseFromString(data)
+        for r in routes.routes:
+            print_route(r)
     else:
         print('Sorry, printing blocks of this type is not implemented yet.', file=sys.stderr)
 
