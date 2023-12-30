@@ -128,14 +128,14 @@ def print_calendar(c: gtfs.Calendar):
             'dates': list(d.dates),
         }))
     for s in c.services:
-        print(json.dumps({
+        print_skip_empty({
             'service_id': s.service_id,
             'start_date': None if not s.start_date else s.start_date,
             'end_date': None if not s.end_date else s.end_date,
             'weekdays': f'{s.weekdays:#b}',
             'added_days': None if not s.added_days else s.added_days,
-            'removed_days': None if not s.removes_days else s.removed_days,
-        }))
+            'removed_days': None if not s.removed_days else s.removed_days,
+        })
 
 
 def print_shape(s: gtfs.TripShape):
@@ -268,7 +268,7 @@ def print_part(part: gtfs.Block, data: bytes):
         shapes = gtfs.Shapes()
         shapes.ParseFromString(data)
         for s in shapes.shapes:
-            print_shape(shapes)
+            print_shape(s)
     elif part == gtfs.B_NETWORKS:
         networks = gtfs.Networks()
         networks.ParseFromString(data)

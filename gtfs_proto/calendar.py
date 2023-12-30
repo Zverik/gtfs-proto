@@ -18,7 +18,7 @@ class CalendarDates:
     def __init__(self):
         self.added: dict[str, int] = {}
         self.removed: dict[str, int] = {}
-        self.lists: list[list[int]] = []
+        self.lists: list[list[int]] = [[]]
 
     def find_list(self, dates: list[int]) -> int:
         for i in range(len(self.lists)):
@@ -33,6 +33,8 @@ class CalendarDates:
         return -1
 
     def add(self, dates: list[int], service_id: str, added: bool):
+        if not dates:
+            return
         dates.sort()
         idx = self.find_list(dates)
         if idx < 0:
@@ -44,27 +46,48 @@ class CalendarDates:
             self.removed[service_id] = idx
 
     def apply_base_date(self, base_date: int):
+        renumber: dict[int, int | None] = {0: 0}
+        last_num = 0
         for i, dates in enumerate(self.lists):
+            if i == 0:
+                continue
             # Delete dates before base_date.
             j = 0
             while j < len(dates) and dates[j] <= base_date:
                 j += 1
             if j > 0:
                 del dates[:j]
-                if not dates:
-                    # No dates in the list, delete references.
-                    to_delete = [k for k, v in self.added.items() if v == i]
-                    for k in to_delete:
-                        del self.added[k]
-                    to_delete = [k for k, v in self.removed.items() if v == i]
-                    for k in to_delete:
-                        del self.removed[k]
-                    continue
 
-            # Replaces dates with difference to previous/base.
-            for i in reversed(range(1, len(dates))):
-                dates[i] = date_diff(dates[i], dates[i - 1])
-            dates[0] = date_diff(dates[0], base_date)
+            if dates:
+                # Replaces dates with difference to previous/base.
+                for j in reversed(range(1, len(dates))):
+                    dates[j] = date_diff(dates[j], dates[j - 1])
+                dates[0] = date_diff(dates[0], base_date)
+
+                last_similar = self.find_list(dates)
+                if 0 < last_similar and last_similar < i:
+                    dates.clear()
+                    renumber[i] = renumber[last_similar]
+                else:
+                    last_num += 1
+                    renumber[i] = last_num
+            else:
+                renumber[i] = None
+
+        # Now renumber
+        self.lists = [] + [lst for lst in self.lists if lst]
+        for k in list(self.added):
+            n = renumber[self.added[k]]
+            if n is None:
+                del self.added[k]
+            else:
+                self.added[k] = n
+        for k in list(self.removed):
+            n = renumber[self.removed[k]]
+            if n is None:
+                del self.removed[k]
+            else:
+                self.removed[k] = n
 
 
 @dataclass
@@ -185,10 +208,11 @@ class CalendarPacker(BasePacker):
 
         if dates:
             for i, date_list in enumerate(dates.lists):
-                calendar.dates.append(gtfs.CalendarDates(
-                    days_id=i + 1,
-                    dates=date_list,
-                ))
+                if i > 0:
+                    calendar.dates.append(gtfs.CalendarDates(
+                        days_id=i,
+                        dates=date_list,
+                    ))
 
         sids = self.ids.reversed()
         for service_id, service in services.items():
@@ -197,8 +221,8 @@ class CalendarPacker(BasePacker):
                 start_date=service.start_date,
                 end_date=service.end_date,
                 weekdays=service.weekdays,
-                added_days=0 if not dates else dates.added.get(sids[service_id], -1) + 1,
-                removed_days=0 if not dates else dates.removed.get(sids[service_id], -1) + 1,
+                added_days=0 if not dates else dates.added.get(sids[service_id], 0),
+                removed_days=0 if not dates else dates.removed.get(sids[service_id], 0),
             )
             calendar.services.append(s)
 

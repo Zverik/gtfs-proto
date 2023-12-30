@@ -166,7 +166,7 @@ class GtfsBlocks:
         while header.blocks:
             header.blocks.pop()
         for b in gtfs.Block.values():
-            if 0 < b < gtfs.B_ITINERARIES:
+            if 0 < b and b < gtfs.B_ITINERARIES:
                 header.blocks.append(len(self.blocks.get(b, b'')))
 
     @property

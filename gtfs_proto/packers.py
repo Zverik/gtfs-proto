@@ -17,9 +17,9 @@ class AgencyPacker(BasePacker):
             for row, agency_id, _ in self.table_reader(f, 'agency_id'):
                 agency = gtfs.Agency(
                     agency_id=agency_id,
-                    name=row['agency_name'].strip(),
-                    url=row['agency_url'].strip(),
-                    timezone=row['agency_timezone'].strip(),
+                    name=row['agency_name'],
+                    url=row['agency_url'],
+                    timezone=self.strings.add(row['agency_timezone']),
                 )
                 for k in ('lang', 'phone', 'fare_url', 'email'):
                     if row.get(f'agency_{k}'):

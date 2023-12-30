@@ -57,10 +57,10 @@ message Agencies {
 }
 
 message Agency {
-  uint32 agency_id = 1; // Here identifiers are renumbered
+  uint32 agency_id = 1; // identifiers are renumbered
   string name = 2;
   string url = 3;
-  string timezone = 4;
+  uint32 timezone = 4; // strings reference
   string lang = 5;
   string phone = 6;
   string fare_url = 7;
