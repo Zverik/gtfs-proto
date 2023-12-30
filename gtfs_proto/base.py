@@ -31,6 +31,10 @@ class StringCache:
                 return j
         return None
 
+    def store(self) -> bytes:
+        st = gtfs.StringTable(strings=self.strings)
+        return st.SerializeToString()
+
 
 class IdReference:
     def __init__(self, source: list[str] | None = None):

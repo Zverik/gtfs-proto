@@ -50,3 +50,15 @@ class BasePacker(ABC):
                 ids.add(row[id_column]),
                 row[id_column],
             )
+
+
+class FareLinks:
+    def __init__(self):
+        self.stop_zones: dict[int, int] = {}
+        self.stop_areas: dict[int, int] = {}
+        self.route_networks: dict[int, int] = {}
+
+    def store(self) -> bytes:
+        fl = gtfs.FareLinks()
+        # TODO
+        return fl.SerializeToString()

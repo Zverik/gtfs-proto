@@ -1,6 +1,7 @@
 import sys
 from .pack import pack
 from .info import info
+from .delta import delta
 
 
 def print_help():
@@ -11,6 +12,7 @@ def print_help():
     print('Commands:')
     print('    pack\tPackage GTFS zip into a protobuf file')
     print('    info\tPrint information for a protobuf-packed GTFS')
+    print('    delta\tGenerate a delta file for two packed GTFS feeds')
     print()
     print('Run {} <command> --help to see a command help.'.format(sys.argv[0]))
 
@@ -26,6 +28,8 @@ if op == 'pack':
     pack()
 elif op == 'info':
     info()
+elif op == 'delta':
+    delta()
 else:
     print_help()
     sys.exit(1)

@@ -100,7 +100,7 @@ message CalendarService {
 }
 
 message Shapes {
-  repeated TripShape shapes = 3;
+  repeated TripShape shapes = 1;
 }
 
 message TripShape {
@@ -125,6 +125,7 @@ message Areas {
 message StringTable {
   // First string is always empty.
   repeated string strings = 1;
+  uint32 delta_skip = 2;
 }
 
 message Stops {
@@ -139,15 +140,12 @@ message Stop {
   string desc = 4;
   sint32 lat = 5; // multiplied by 100000 (1e5), diff from the last
   sint32 lon = 6; // same
-  uint32 zone_id = 7;
-  uint32 area_id = 8;
-  LocationType type = 9;
-  uint32 parent_id = 10;
-  Accessibility wheelchair = 11;
-  string platform_code = 12;
-  string external_str_id = 13; // external id for linking, as string
-  uint32 external_int_id = 14; // external id for linking, as number
-  // TODO: set optional and optimize
+  LocationType type = 7;
+  uint32 parent_id = 8;
+  Accessibility wheelchair = 9;
+  string platform_code = 10;
+  string external_str_id = 11; // external id for linking, as string
+  uint32 external_int_id = 12; // external id for linking, as number
 }
 
 enum LocationType {
@@ -172,20 +170,19 @@ message Routes {
 message Route {
   uint32 route_id = 1; // renumbered
   uint32 agency_id = 2;
-  uint32 network_id = 3;
-  string short_name = 4;
+  string short_name = 3;
   // Long name is assumed to be in format "Stop 1 - Stop 2 - Stop 3".
   // Each part is referenced from string table.
   // If names are not in this format, just putting all long names verbatim there.
-  repeated uint32 long_name = 5;
-  string desc = 6;
-  RouteType type = 7;
-  uint32 color = 8; // note: black (0x000000) and white (0xffffff) are swapped!
-  uint32 text_color = 9;
-  PickupDropoff continuous_pickup = 10;
-  PickupDropoff continuous_dropoff = 11;
+  repeated uint32 long_name = 4;
+  string desc = 5;
+  RouteType type = 6;
+  uint32 color = 7; // note: black (0x000000) and white (0xffffff) are swapped!
+  uint32 text_color = 8;
+  PickupDropoff continuous_pickup = 9;
+  PickupDropoff continuous_dropoff = 10;
 
-  repeated RouteItinerary itineraries = 12; // to skip route_id there.
+  repeated RouteItinerary itineraries = 11; // to skip route_id there.
 }
 
 // See also https://developers.google.com/transit/gtfs/reference/extended-route-types
@@ -281,6 +278,7 @@ message Transfer {
   uint32 to_trip = 6;
   TransferType type = 7;
   uint32 min_transfer_time = 8; // granularity is 5 seconds, rounded up (!)
+  bool delete = 9; // for delta files
 }
 
 enum TransferType {
@@ -296,11 +294,11 @@ enum TransferType {
 and network_ids from routes, to easier decouple fares. */
 
 message FareLinks {
-    // Zero if the value is the same as the last one.
-    // Trailing zeroes are cut.
-    repeated uint32 stop_area_ids = 1;
-    repeated uint32 stop_zone_ids = 2;
-    repeated uint32 route_network_ids = 3;
+  // Zero if the value is the same as the last one.
+  // Trailing zeroes are cut.
+  repeated uint32 stop_area_ids = 1;
+  repeated uint32 stop_zone_ids = 2;
+  repeated uint32 route_network_ids = 3;
 }
 
 // TODO: Fares
@@ -310,36 +308,86 @@ message FareLinks {
 extracts between versions consistent. */
 
 message IdStore {
-    repeated IdReference refs = 1;
+  repeated IdReference refs = 1;
 }
 
 message IdReference {
-    Block block = 1;
-    repeated string ids = 2;
+  Block block = 1;
+  repeated string ids = 2;
+  uint32 delta_skip = 3;
 }
 
 // These go in the file order.
 enum Block {
-    B_HEADER = 0;  // GtfsHeader
-    B_IDS = 1;     // IdStore → IdReference
-    B_STRINGS = 2; // StringTable
+  B_HEADER = 0;  // GtfsHeader
+  B_IDS = 1;     // IdStore → IdReference
+  B_STRINGS = 2; // StringTable
 
-    // First, dictionaries that are referenced by other tables.
-    B_AGENCY = 3;   // Agencies → Agency
-    B_CALENDAR = 4; // Calendar
-    B_SHAPES = 5;   // Shapes → TripShape
-    B_NETWORKS = 6; // Networks
-    B_AREAS = 7;    // Areas
+  // First, dictionaries that are referenced by other tables.
+  B_AGENCY = 3;   // Agencies → Agency
+  B_CALENDAR = 4; // Calendar
+  B_SHAPES = 5;   // Shapes → TripShape
 
-    // And here, the core: stops, routes, and fares.
-    B_STOPS = 8;       // Stops → Stop
-    B_ROUTES = 9;      // Routes → Route
-    B_TRIPS = 10;      // Trips → Trip
-    B_TRANSFERS = 11;  // Transfers → Transfer
-    B_FARE_LINKS = 12; // FareLinks
-    B_FARES = 13;      // TODO
+  // And here, the core: stops, routes, and fares.
+  B_STOPS = 6;     // Stops → Stop
+  B_ROUTES = 7;    // Routes → Route
+  B_TRIPS = 8;     // Trips → Trip
+  B_TRANSFERS = 9; // Transfers → Transfer
 
-    // Following blocks are not actually written, but needed for indexing.
-    B_ITINERARIES = 14;
-    B_ZONES = 15;
+  // Fare-related tables.
+  B_NETWORKS = 10;   // Networks
+  B_AREAS = 11;      // Areas
+  B_FARE_LINKS = 12; // FareLinks
+  B_FARES = 13;      // TODO
+
+  // Following blocks are not actually written, but needed for indexing.
+  B_ITINERARIES = 14;
+  B_ZONES = 15;
+}
+
+
+/* Deltas use mostly the same messages, but some are changed. */
+
+message GtfsDeltaHeader {
+  uint32 old_version = 1;
+  uint32 version = 2;
+  bool compressed = 3;
+  repeated uint32 blocks = 4;
+}
+
+// IdStore: same structure, only adding ids, using delta_skip to skip old ids.
+// - Note that if delta_skip is larger than the length of ids for a block,
+//   that means that's the wrong delta file to apply.
+
+// StringTable: same idea with delta_skip.
+
+// Agencies: zero element for same, non-zero for change or addition.
+
+// Calendar: first, base_date is applied only to new and changed records.
+// CalendarDates: included only deleted, changed, and new. All the same: id + empty or non-empty list.
+// CalendarService: not deleting anything; new and changes specify every field.
+
+// Shapes: TripShape with just an id to delete, with locations - change or add.
+
+// Stops: Stop with just an id to delete, with a new id to add, with existing -
+// empty fields stay the same. This prevents changing some enum values, but that's okay.
+// New ids should continue the sequence.
+
+// Routes: like stops, and same for itineraries inside.
+
+// Trips: like stops: specify just an id to delete, some information when changed,
+// all info when adding a new one. New ids should continue the sequence.
+
+// Transfers: first six fields serve as a primary key. Uses "delete" field to delete,
+// otherwise add/change with full data inside.
+
+// Networks and Areas: listing only new and changed names in the maps.
+
+// FareLinks: use this new message instead, with the same block id:
+
+message FareLinksDelta {
+  // Second value is zero when the link is deleted.
+  map<uint32, uint32> stop_area_ids = 1;
+  map<uint32, uint32> stop_zone_ids = 2;
+  map<uint32, uint32> route_network_ids = 3;
 }

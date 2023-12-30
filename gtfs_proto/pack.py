@@ -83,8 +83,7 @@ def pack():
         blocks.run(TransfersPacker(z, store))
 
     if blocks.not_empty:
-        blocks.add(gtfs.B_STRINGS, gtfs.StringTable(
-            strings=store.strings.strings).SerializeToString())
+        blocks.add(gtfs.B_STRINGS, store.strings.store())
         blocks.add(gtfs.B_IDS, store.store())
         blocks.populate_header(header)
 
