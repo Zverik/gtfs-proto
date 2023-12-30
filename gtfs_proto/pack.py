@@ -17,25 +17,22 @@ def pack():
         description='Converts GTFS feed into a protobuf-compressed version')
     parser.add_argument('input', help='Input zipped gtfs file')
     parser.add_argument('-u', '--url', help='URL to the original feed')
-    parser.add_argument('-p', '--prev-id', type=argparse.FileType('rb'),
-                        help='Last id storage for keeping ids consistent')
-    parser.add_argument('-i', '--id',
-                        help='Resuling id storage file for keeping generated ids same. '
-                        'Use %% for version')
+    parser.add_argument('-p', '--prev', type=argparse.FileType('rb'),
+                        help='Last build for keeping ids consistent')
     parser.add_argument('-o', '--output', required=True,
                         help='Output protobuf file. Use %% for version')
-    parser.add_argument('-z', '--zip', action='store_true',
-                        help='Compress data blocks')
+    parser.add_argument('-r', '--raw', action='store_true',
+                        help='Do not compress data blocks')
     options = parser.parse_args()
 
     store = FeedCache()
-    version = store.load(options.prev_id)
+    store.load(options.prev)
     header = gtfs.GtfsHeader()
-    header.version = version + 1
-    header.compressed = options.zip
+    header.version = store.version + 1
+    header.compressed = not options.raw
     if options.url:
         header.original_url = options.url
-    blocks = GtfsBlocks(header, options.zip)
+    blocks = GtfsBlocks(header, not options.raw)
 
     with ZipFile(options.input, 'r') as z:
         blocks.run(AgencyPacker(z, store))
@@ -52,6 +49,7 @@ def pack():
     if blocks.not_empty:
         blocks.add(gtfs.B_STRINGS, gtfs.StringTable(
             strings=store.strings.strings).SerializeToString())
+        blocks.add(gtfs.B_IDS, store.store())
         blocks.populate_header(header)
 
         fn = options.output.replace('%', str(header.version))
@@ -61,7 +59,3 @@ def pack():
             f.write(header_data)
             for b in blocks:
                 f.write(b)
-        if options.id:
-            fn = options.id.replace('%', str(header.version))
-            with open(fn, 'wb') as f:
-                f.write(store.store(header.version))

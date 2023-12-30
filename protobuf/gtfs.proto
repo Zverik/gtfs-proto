@@ -288,18 +288,14 @@ enum TransferType {
   T_IN_SEAT_FORBIDDEN = 5;
 }
 
-// TODO: Fares V1
-// TODO: Fares V2
+// TODO: Fares
 
 
 /* IdStore is for keeping track of source identifiers and making
-extracts between versions consistent. It's not a part of the GTFS
-protobuf extract, but of course can be published. */
+extracts between versions consistent. */
 
 message IdStore {
-    uint32 version = 1;
-    repeated IdReference refs = 2;
-    repeated string strings = 3;
+    repeated IdReference refs = 1;
 }
 
 message IdReference {
@@ -309,25 +305,25 @@ message IdReference {
 
 // These go in the file order.
 enum Block {
-    B_HEADER = 0;
+    B_HEADER = 0;  // GtfsHeader
+    B_IDS = 1;     // IdStore → IdReference
+    B_STRINGS = 2; // StringTable
 
     // First, dictionaries that are referenced by other tables.
-    B_AGENCY = 1;
-    B_CALENDAR = 2;
-    B_SHAPES = 3;
-    B_NETWORKS = 4;
-    B_AREAS = 5;
-    B_STRINGS = 6;
+    B_AGENCY = 3;   // Agencies → Agency
+    B_CALENDAR = 4; // Calendar
+    B_SHAPES = 5;   // Shapes → TripShape
+    B_NETWORKS = 6; // Networks
+    B_AREAS = 7;    // Areas
 
     // And here, the core: stops, routes, and fares.
-    B_STOPS = 7;
-    B_ROUTES = 8;
-    B_TRIPS = 9;
-    B_TRANSFERS = 10;
-    B_FARES_V1 = 11;
-    B_FARES_V2 = 12;
+    B_STOPS = 8;      // Stops → Stop
+    B_ROUTES = 9;     // Routes → Route
+    B_TRIPS = 10;     // Trips → Trip
+    B_TRANSFERS = 11; // Transfers → Transfer
+    B_FARES = 12;     // TODO
 
     // Following blocks are not actually written, but needed for indexing.
-    B_ITINERARIES = 13;
-    B_ZONES = 14;
+    B_ITINERARIES = 14;
+    B_ZONES = 15;
 }

@@ -9,6 +9,7 @@ from typing import Any
 
 
 BLOCKS = {
+    'ids': gtfs.B_IDS,
     'agency': gtfs.B_AGENCY,
     'calendar': gtfs.B_CALENDAR,
     'shapes': gtfs.B_SHAPES,
@@ -19,6 +20,7 @@ BLOCKS = {
     'routes': gtfs.B_ROUTES,
     'trips': gtfs.B_TRIPS,
     'transfers': gtfs.B_TRANSFERS,
+    'fares': gtfs.B_FARES,
 }
 
 
@@ -95,6 +97,14 @@ def print_header(header: gtfs.GtfsHeader, fileobj: io.BytesIO):
                 v['size'] = len(data)
             v.update(read_count(i + 1, data))
             print(json.dumps(v))
+
+
+def print_id(ids: gtfs.IdReference):
+    block_names = {v: s for s, v in BLOCKS.items()}
+    print_skip_empty({
+        'block': block_names.get(ids.block, str(ids.block)),
+        'ids': {i: s for i, s in enumerate(ids.ids) if i},
+    })
 
 
 def print_agency(a: gtfs.Agency):
@@ -240,7 +250,12 @@ def print_transfer(t: gtfs.Transfer):
 
 
 def print_part(part: gtfs.Block, data: bytes):
-    if part == gtfs.B_AGENCY:
+    if part == gtfs.B_IDS:
+        ids = gtfs.IdStore()
+        ids.ParseFromString(data)
+        for i in ids.refs:
+            print_id(i)
+    elif part == gtfs.B_AGENCY:
         agencies = gtfs.Agencies()
         agencies.ParseFromString(data)
         for a in agencies.agencies:

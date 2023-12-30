@@ -1,12 +1,13 @@
-from zipfile import ZipFile
-from typing import TextIO, BinaryIO
-from collections.abc import Generator
-from io import TextIOWrapper
+import struct
+import zstandard
 from . import gtfs_pb2 as gtfs
 from abc import ABC, abstractmethod
-import zstandard
+from collections.abc import Generator
 from contextlib import contextmanager
 from csv import DictReader
+from io import TextIOWrapper
+from typing import TextIO, BinaryIO
+from zipfile import ZipFile
 
 
 class StringCache:
@@ -71,25 +72,42 @@ class IdReference:
 
 class FeedCache:
     def __init__(self):
+        self.version = 0
         self.strings = StringCache()
         self.id_store: dict[int, IdReference] = {
             b: IdReference() for b in gtfs.Block.values()}
 
-    def load(self, fileobj: BinaryIO | None) -> int:
+    def load(self, fileobj: BinaryIO | None):
         if not fileobj:
-            return 0
+            return
 
-        store = gtfs.IdStore()
-        store.ParseFromString(fileobj.read())
+        header_len = struct.unpack('<h', fileobj.read(2))[0]
+        header = gtfs.GtfsHeader()
+        header.ParseFromString(fileobj.read(header_len))
+        arch = None if not header.compressed else zstandard.ZstdDecompressor()
+        self.version = header.version
 
-        for idrefs in store.refs:
-            self.id_store[idrefs.block] = IdReference(idrefs.ids)
-        self.strings = StringCache(store.strings)
+        for b, size in enumerate(header.blocks):
+            if b + 1 == gtfs.B_STRINGS:
+                data = fileobj.read(size)
+                if arch:
+                    data = arch.decompress(data)
+                s = gtfs.StringTable()
+                s.ParseFromString(data)
+                self.strings = StringCache(s.strings)
+            elif b + 1 == gtfs.B_IDS:
+                data = fileobj.read(size)
+                if arch:
+                    data = arch.decompress(data)
+                store = gtfs.IdStore()
+                store.ParseFromString(data)
+                for idrefs in store.refs:
+                    self.id_store[idrefs.block] = IdReference(idrefs.ids)
+            else:
+                fileobj.seek(size, 1)
 
-        return store.version
-
-    def store(self, version: int) -> bytes:
-        idstore = gtfs.IdStore(version=version, strings=self.strings.strings)
+    def store(self) -> bytes:
+        idstore = gtfs.IdStore()
         for block, ids in self.id_store.items():
             if ids:
                 idrefs = gtfs.IdReference(block=block, ids=ids.to_list())
