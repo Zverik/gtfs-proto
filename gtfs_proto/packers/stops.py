@@ -1,26 +1,27 @@
-from .base import BasePacker, FeedCache
+from .base import BasePacker, FeedCache, FareLinks
 from typing import TextIO
 from zipfile import ZipFile
 from .. import gtfs_pb2 as gtfs
 
 
 class StopsPacker(BasePacker):
-    def __init__(self, z: ZipFile, store: FeedCache):
+    def __init__(self, z: ZipFile, store: FeedCache, fl: FareLinks):
         super().__init__(z, store)
+        self.fl = fl
 
     @property
     def block(self):
         return gtfs.B_STOPS
 
     def pack(self):
-        stop_areas: dict[str, int] = {}
+        with self.open_table('stops') as f:
+            st = self.prepare(f)
         if self.has_file('stop_areas'):
             with self.open_table('stop_areas') as f:
-                stop_areas = self.read_stop_areas(f)
-        with self.open_table('stops') as f:
-            return self.prepare(f, stop_areas)
+                self.read_stop_areas(f)
+        return st
 
-    def prepare(self, fileobj: TextIO, stop_areas: dict[str, int]) -> bytes:
+    def prepare(self, fileobj: TextIO) -> bytes:
         stops = gtfs.Stops()
         last_lat: float = 0
         last_lon: float = 0
@@ -40,9 +41,7 @@ class StopsPacker(BasePacker):
                 stop.lon = new_lon - last_lon
                 last_lat, last_lon = new_lat, new_lon
             if row.get('zone_id'):
-                stop.zone_id = self.id_store[gtfs.B_ZONES].add(row['zone_id'])
-            if orig_stop_id in stop_areas:
-                stop.area_id = stop_areas[orig_stop_id]
+                self.fl.stop_zones[stop_id] = self.id_store[gtfs.B_ZONES].add(row['zone_id'])
             stop.type = self.parse_location_type(row.get('location_type'))
             pstid = row.get('parent_station')
             if pstid:
@@ -56,11 +55,9 @@ class StopsPacker(BasePacker):
             stops.stops.append(stop)
         return stops.SerializeToString()
 
-    def read_stop_areas(self, fileobj: TextIO) -> dict[str, int]:
-        result: dict[str, int] = {}
+    def read_stop_areas(self, fileobj: TextIO):
         for row, area_id, _ in self.table_reader(fileobj, 'area_id', gtfs.B_AREAS):
-            result[row['stop_id']] = area_id
-        return result
+            self.fl.stop_areas[self.ids.add(row['stop_id'])] = area_id
 
     def parse_location_type(self, value: str | None) -> int:
         if not value:

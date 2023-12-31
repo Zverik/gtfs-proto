@@ -113,3 +113,26 @@ class FeedCache:
                 idrefs = gtfs.IdReference(block=block, ids=ids.to_list())
                 idstore.refs.append(idrefs)
         return idstore.SerializeToString()
+
+
+class FareLinks:
+    def __init__(self):
+        self.stop_zones: dict[int, int] = {}
+        self.stop_areas: dict[int, int] = {}
+        self.route_networks: dict[int, int] = {}
+
+    def to_list(self, d: dict[int, int]) -> list[int]:
+        if not d:
+            return []
+        result: list[int] = [0] * (max(d.keys()) + 1)
+        for k, v in d.items():
+            result[k] = v
+        return result
+
+    def store(self) -> bytes:
+        fl = gtfs.FareLinks(
+            stop_area_ids=self.to_list(self.stop_areas),
+            stop_zone_ids=self.to_list(self.stop_zones),
+            route_network_ids=self.to_list(self.route_networks),
+        )
+        return fl.SerializeToString()

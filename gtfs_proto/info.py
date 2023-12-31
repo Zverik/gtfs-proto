@@ -9,17 +9,22 @@ from typing import Any
 
 
 BLOCKS = {
+    'header': gtfs.B_HEADER,
     'ids': gtfs.B_IDS,
+    'strings': gtfs.B_STRINGS,
+
     'agency': gtfs.B_AGENCY,
     'calendar': gtfs.B_CALENDAR,
     'shapes': gtfs.B_SHAPES,
-    'networks': gtfs.B_NETWORKS,
-    'areas': gtfs.B_AREAS,
-    'strings': gtfs.B_STRINGS,
+
     'stops': gtfs.B_STOPS,
     'routes': gtfs.B_ROUTES,
     'trips': gtfs.B_TRIPS,
     'transfers': gtfs.B_TRANSFERS,
+
+    'networks': gtfs.B_NETWORKS,
+    'areas': gtfs.B_AREAS,
+    'fare_links': gtfs.B_FARE_LINKS,
     'fares': gtfs.B_FARES,
 }
 
@@ -69,6 +74,14 @@ def read_count(block: gtfs.Block, data: bytes) -> dict[str, Any]:
         tr = gtfs.Transfers()
         tr.ParseFromString(data)
         return {COUNT: len(tr.transfers)}
+    elif block == gtfs.B_FARE_LINKS:
+        fl = gtfs.FareLinks()
+        fl.ParseFromString(data)
+        return {
+            'stop_zones': len(fl.stop_zone_ids),
+            'stop_areas': len(fl.stop_area_ids),
+            'route_networks': len(fl.route_network_ids),
+        }
     return {}
 
 
@@ -249,6 +262,18 @@ def print_transfer(t: gtfs.Transfer):
     })
 
 
+def print_fare_links(fl: gtfs.FareLinks):
+    print(json.dumps({
+        'stop_area_ids': {i: v for i, v in enumerate(fl.stop_area_ids) if v}
+    }))
+    print(json.dumps({
+        'stop_zone_ids': {i: v for i, v in enumerate(fl.stop_zone_ids) if v}
+    }))
+    print(json.dumps({
+        'route_network_ids': {i: v for i, v in enumerate(fl.route_network_ids) if v}
+    }))
+
+
 def print_part(part: gtfs.Block, data: bytes):
     if part == gtfs.B_IDS:
         ids = gtfs.IdStore()
@@ -301,6 +326,10 @@ def print_part(part: gtfs.Block, data: bytes):
         transfers.ParseFromString(data)
         for t in transfers.transfers:
             print_transfer(t)
+    elif part == gtfs.B_FARE_LINKS:
+        fl = gtfs.FareLinks()
+        fl.ParseFromString(data)
+        print_fare_links(fl)
     else:
         print('Sorry, printing blocks of this type is not implemented yet.', file=sys.stderr)
 

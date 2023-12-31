@@ -1,4 +1,4 @@
-from .base import BasePacker, FeedCache
+from .base import BasePacker, FeedCache, FareLinks
 from typing import TextIO
 from zipfile import ZipFile
 from csv import DictReader
@@ -39,8 +39,9 @@ class Trip:
 
 
 class RoutesPacker(BasePacker):
-    def __init__(self, z: ZipFile, store: FeedCache):
+    def __init__(self, z: ZipFile, store: FeedCache, fl: FareLinks):
         super().__init__(z, store)
+        self.fl = fl
         # trip_id → itinerary_id
         self.trip_itineraries: dict[int, int] = {}
 
@@ -49,19 +50,18 @@ class RoutesPacker(BasePacker):
         return gtfs.B_ROUTES
 
     def pack(self):
-        route_networks: dict[str, int] = {}
-        if self.has_file('route_networks'):
-            with self.open_table('route_networks') as f:
-                route_networks = self.read_route_networks(f)
         with self.open_table('stop_times') as f:
             trip_stops = self.read_trip_stops(f)
         with self.open_table('trips') as f:
             itineraries, self.trip_itineraries = self.read_itineraries(f, trip_stops)
         with self.open_table('routes') as f:
-            return self.prepare(f, route_networks, itineraries)
+            r = self.prepare(f, itineraries)
+        if self.has_file('route_networks'):
+            with self.open_table('route_networks') as f:
+                self.read_route_networks(f)
+        return r
 
     def prepare(self, fileobj: TextIO,
-                route_networks: dict[str, int],
                 itineraries: dict[str, list[gtfs.RouteItinerary]]) -> bytes:
         routes = gtfs.Routes()
         agency_ids = self.id_store[gtfs.B_AGENCY]
@@ -75,11 +75,8 @@ class RoutesPacker(BasePacker):
             if row.get('agency_id'):
                 route.agency_id = agency_ids[row['agency_id']]
 
-            # Network Id can come from two sources.
-            if orig_route_id in route_networks:
-                route.network_id = route_networks[orig_route_id]
-            elif row.get('network_id', ''):
-                route.network_id = network_ids.add(row['network_id'])
+            if row.get('network_id'):
+                self.fl.route_networks[route_id] = network_ids.add(row['network_id'])
 
             if row.get('route_short_name', ''):
                 route.short_name = row['route_short_name']
@@ -100,11 +97,9 @@ class RoutesPacker(BasePacker):
             routes.routes.append(route)
         return routes.SerializeToString()
 
-    def read_route_networks(self, fileobj: TextIO) -> dict[str, int]:
-        result: dict[str, int] = {}
+    def read_route_networks(self, fileobj: TextIO):
         for row, network_id, _ in self.table_reader(fileobj, 'network_id', gtfs.B_NETWORKS):
-            result[row['route_id']] = network_id
-        return result
+            self.fl.route_networks[self.ids.add(row['route_id'])] = network_id
 
     def read_itineraries(self, fileobj: TextIO, trip_stops: dict[str, list[StopData]]
                          ) -> tuple[dict[str, list[gtfs.RouteItinerary]], dict[int, int]]:

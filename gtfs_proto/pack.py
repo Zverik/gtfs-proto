@@ -3,7 +3,7 @@ import struct
 import zstandard
 from zipfile import ZipFile
 from . import gtfs_pb2 as gtfs
-from .base import FeedCache
+from .base import FeedCache, FareLinks
 from .packers import (
     BasePacker, AgencyPacker, NetworksPacker, AreasPacker,
     CalendarPacker, ShapesPacker, StopsPacker,
@@ -68,6 +68,7 @@ def pack():
     header.compressed = not options.raw
     if options.url:
         header.original_url = options.url
+    fl = FareLinks()
     blocks = GtfsBlocks(header, not options.raw)
 
     with ZipFile(options.input, 'r') as z:
@@ -76,8 +77,8 @@ def pack():
         blocks.run(ShapesPacker(z, store))
         blocks.run(NetworksPacker(z, store))
         blocks.run(AreasPacker(z, store))
-        blocks.run(StopsPacker(z, store))
-        r = RoutesPacker(z, store)  # reads itineraries
+        blocks.run(StopsPacker(z, store, fl))
+        r = RoutesPacker(z, store, fl)  # reads itineraries
         blocks.run(r)
         blocks.run(TripsPacker(z, store, r.trip_itineraries))
         blocks.run(TransfersPacker(z, store))
@@ -85,6 +86,7 @@ def pack():
     if blocks.not_empty:
         blocks.add(gtfs.B_STRINGS, store.strings.store())
         blocks.add(gtfs.B_IDS, store.store())
+        blocks.add(gtfs.B_FARE_LINKS, fl.store())
         blocks.populate_header(header)
 
         fn = options.output.replace('%', str(header.version))
