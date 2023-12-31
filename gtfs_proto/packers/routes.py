@@ -4,7 +4,7 @@ from zipfile import ZipFile
 from csv import DictReader
 from collections import defaultdict
 from dataclasses import dataclass
-from hashlib import sha1
+from hashlib import md5
 from .. import gtfs_pb2 as gtfs
 
 
@@ -26,7 +26,8 @@ class Trip:
         self.headsigns = [s.headsign for s in stops]
 
         # Generate stops key.
-        m = sha1(usedforsecurity=False)
+        m = md5(usedforsecurity=False)
+        m.update(row['route_id'].encode())
         for s in self.stops:
             m.update(s.to_bytes(4))
         self.stops_key = m.hexdigest()
