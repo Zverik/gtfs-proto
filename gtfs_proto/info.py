@@ -169,8 +169,6 @@ def print_stop(s: gtfs.Stop):
         'desc': s.desc,
         'lon': s.lon,
         'lat': s.lat,
-        'zone_id': s.zone_id or None,
-        'area_id': s.area_id or None,
         'type': None if not s.type else LOC_TYPES[s.type],
         'parent_id': s.parent_id or None,
         'wheelchair': None if not s.wheelchair else ACC_TYPES[s.wheelchair],
@@ -213,7 +211,6 @@ def print_route(r: gtfs.Route):
     print_skip_empty({
         'route_id': r.route_id,
         'agency_id': r.agency_id,
-        'network_id': r.network_id or None,
         'short_name': r.short_name,
         'long_name': list(r.long_name),
         'desc': r.desc,

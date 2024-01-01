@@ -9,7 +9,7 @@ from .. import gtfs_pb2 as gtfs
 class StopTime:
     seq_id: int
     arrival: int
-    departure: int | None
+    departure: int
     pickup: gtfs.PickupDropoff
     dropoff: gtfs.PickupDropoff
     approximate: bool
@@ -64,9 +64,11 @@ class TripsPacker(BasePacker):
                 cur_times = []
             arrival = self.parse_time(row['arrival_time']) or 0
             arrival = round(arrival / 5)
-            departure = self.parse_time(row['departure_time'])
+            departure = self.parse_time(row['departure_time']) or 0
             if departure:
                 departure = round(departure / 5)
+            elif arrival:
+                departure = arrival
             cur_times.append(StopTime(
                 seq_id=int(row['stop_sequence']),
                 arrival=arrival,
@@ -82,15 +84,18 @@ class TripsPacker(BasePacker):
         times.sort(key=lambda t: t.seq_id)
         if trip.arrivals or trip.departures:
             raise ValueError(f'Trip was already filled: {self.ids.reversed()[trip.trip_id]}')
-        departures: list[int] = []
+        arrivals: list[int] = []
         for i in range(len(times)):
-            if i == 0 or times[i].arrival == 0:
-                trip.arrivals.append(times[i].arrival)
-            else:
-                trip.arrivals.append(times[i].arrival - times[i-1].arrival)
+            a = times[i].arrival
             d = times[i].departure
-            departures.append(0 if not d else d - times[i].arrival)
-        trip.departures.extend(self.cut_empty(departures, 0))
+            # Departures is the main list, arrivals is the auxillary.
+            if i == 0 or d == 0:
+                trip.departures.append(d)
+            else:
+                trip.departures.append(d - times[i-1].departure)
+            # d - a >= 0 because if d == 0, we set it to arrival time in from_stop_times().
+            arrivals.append(0 if not a else d - a)
+        trip.arrivals.extend(self.cut_empty(arrivals, 0))
         trip.pickup_types.extend(self.cut_empty([t.pickup for t in times], 0))
         trip.dropoff_types.extend(self.cut_empty([t.dropoff for t in times], 0))
         trip.approximate = any(t.approximate for t in times)
