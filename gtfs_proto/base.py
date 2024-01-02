@@ -8,6 +8,7 @@ class StringCache:
     def __init__(self, source: list[str] | None = None):
         self.strings: list[str] = source or ['']
         self.index: dict[str, int] = {s: i for i, s in enumerate(self.strings) if s}
+        self.delta_skip = 0
 
     def clear(self):
         self.strings = ['']
@@ -36,7 +37,7 @@ class StringCache:
         return None
 
     def store(self) -> bytes:
-        st = gtfs.StringTable(strings=self.strings)
+        st = gtfs.StringTable(strings=self.strings[self.delta_skip:])
         return st.SerializeToString()
 
 
@@ -44,6 +45,7 @@ class IdReference:
     def __init__(self, source: list[str] | None = None):
         self.ids: dict[str, int] = {s: i for i, s in enumerate(source or []) if s}
         self.last_id = 0 if not self.ids else max(self.ids.values())
+        self.delta_skip = 0
 
     def __getitem__(self, k: str) -> int:
         return self.ids[k]
@@ -72,7 +74,7 @@ class IdReference:
         idstrings = [''] * (self.last_id + 1)
         for s, i in self.ids.items():
             idstrings[i] = s
-        return idstrings
+        return idstrings[self.delta_skip:]
 
     def reversed(self) -> dict[int, str]:
         return {i: s for s, i in self.ids.items()}

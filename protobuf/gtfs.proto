@@ -24,6 +24,8 @@ syntax = "proto3";
 
 package gtfs;
 
+/* The file starts with a 2-byte header length. */
+
 /* This is the file header with block sizes.
 Fields can come in any order, but in the file, blocks are
 serialized exactly in the order listed here.
@@ -346,7 +348,8 @@ enum Block {
 }
 
 
-/* Deltas use mostly the same messages, but some are changed. */
+/* Deltas use mostly the same messages, but some are changed.
+The header length is added to 0x8000. */
 
 message GtfsDeltaHeader {
   uint32 old_version = 1;
@@ -370,13 +373,14 @@ message GtfsDeltaHeader {
 // Shapes: TripShape with just an id to delete, with locations - change or add.
 
 // Stops: Stop with just an id to delete, with a new id to add, with existing -
-// empty fields stay the same. This prevents changing some enum values, but that's okay.
+// empty fields stay the same. Fields "wheelchair" and "type" are always set for changed.
 // New ids should continue the sequence.
 
 // Routes: like stops, and same for itineraries inside.
 
 // Trips: like stops: specify just an id to delete, some information when changed,
 // all info when adding a new one. New ids should continue the sequence.
+// Fields "wheelchair" and "bikes" are always set for changed.
 
 // Transfers: first six fields serve as a primary key. Uses "delete" field to delete,
 // otherwise add/change with full data inside.
