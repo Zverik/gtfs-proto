@@ -161,7 +161,11 @@ class GtfsProto:
         idstore = gtfs.IdStore()
         for block, ids in self.id_store.items():
             if ids:
-                idrefs = gtfs.IdReference(block=block, ids=ids.to_list())
+                idrefs = gtfs.IdReference(
+                    block=block,
+                    ids=ids.to_list(),
+                    delta_skip=ids.delta_skip,
+                )
                 idstore.refs.append(idrefs)
         self._blocks.add(gtfs.B_IDS, idstore.SerializeToString())
 

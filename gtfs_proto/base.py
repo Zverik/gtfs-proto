@@ -37,7 +37,10 @@ class StringCache:
         return None
 
     def store(self) -> bytes:
-        st = gtfs.StringTable(strings=self.strings[self.delta_skip:])
+        st = gtfs.StringTable(
+            strings=self.strings[self.delta_skip:],
+            delta_skip=self.delta_skip,
+        )
         return st.SerializeToString()
 
 
