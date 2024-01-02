@@ -9,6 +9,10 @@ class StringCache:
         self.strings: list[str] = source or ['']
         self.index: dict[str, int] = {s: i for i, s in enumerate(self.strings) if s}
 
+    def clear(self):
+        self.strings = ['']
+        self.index = {}
+
     def add(self, s: str | None) -> int:
         if not s:
             return 0
@@ -46,6 +50,10 @@ class IdReference:
 
     def __len__(self) -> int:
         return len(self.ids)
+
+    def clear(self):
+        self.ids = {}
+        self.last_id = 0
 
     def add(self, k: str) -> int:
         if k not in self.ids:
@@ -120,6 +128,16 @@ class FareLinks:
         self.stop_zones: dict[int, int] = {}
         self.stop_areas: dict[int, int] = {}
         self.route_networks: dict[int, int] = {}
+
+    def clear(self):
+        self.stop_zones = {}
+        self.stop_areas = {}
+        self.route_networks = {}
+
+    def load(self, fl: gtfs.FareLinks):
+        self.stop_zones = {i: v for i, v in enumerate(fl.stop_zone_ids) if v}
+        self.stop_areas = {i: v for i, v in enumerate(fl.stop_area_ids) if v}
+        self.route_networks = {i: v for i, v in enumerate(fl.route_network_ids) if v}
 
     def to_list(self, d: dict[int, int]) -> list[int]:
         if not d:

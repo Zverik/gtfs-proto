@@ -12,9 +12,8 @@ from .packers import (
 
 
 class GtfsBlocks:
-    def __init__(self, header: gtfs.GtfsHeader | None = None, compress: bool = False):
+    def __init__(self, compress: bool = False):
         self.blocks: dict[gtfs.Block, bytes] = {}
-        self.header = header
         self.compress = compress
 
     def populate_header(self, header: gtfs.GtfsHeader):
@@ -69,7 +68,7 @@ def pack():
     if options.url:
         header.original_url = options.url
     fl = FareLinks()
-    blocks = GtfsBlocks(header, not options.raw)
+    blocks = GtfsBlocks(not options.raw)
 
     with ZipFile(options.input, 'r') as z:
         blocks.run(AgencyPacker(z, store))
