@@ -1,9 +1,6 @@
 import argparse
-import struct
-import zstandard
 from zipfile import ZipFile
-from . import gtfs_pb2 as gtfs
-from .base import FeedCache, FareLinks
+from .wrapper import GtfsProto
 from .packers import (
     BasePacker, AgencyPacker, NetworksPacker, AreasPacker,
     CalendarPacker, ShapesPacker, StopsPacker,
@@ -11,40 +8,8 @@ from .packers import (
 )
 
 
-class GtfsBlocks:
-    def __init__(self, compress: bool = False):
-        self.blocks: dict[gtfs.Block, bytes] = {}
-        self.compress = compress
-
-    def populate_header(self, header: gtfs.GtfsHeader):
-        # This version of protobuf doesn't have the "clear()" method for repeated fields.
-        while header.blocks:
-            header.blocks.pop()
-        for b in gtfs.Block.values():
-            if 0 < b and b < gtfs.B_ITINERARIES:
-                header.blocks.append(len(self.blocks.get(b, b'')))
-
-    @property
-    def not_empty(self):
-        return any(self.blocks.values())
-
-    def __iter__(self):
-        for b in sorted(self.blocks):
-            yield self.blocks[b]
-
-    def archive_if(self, data: bytes):
-        if self.compress:
-            arch = zstandard.ZstdCompressor(level=10)
-            return arch.compress(data)
-        return data
-
-    def add(self, block: int, data: bytes):
-        if not data:
-            return
-        self.blocks[block] = self.archive_if(data)
-
-    def run(self, packer: BasePacker):
-        self.add(packer.block, packer.pack())
+def run_block(feed: GtfsProto, packer: BasePacker):
+    feed.blocks.add(packer.block, packer.pack())
 
 
 def pack():
@@ -60,38 +25,32 @@ def pack():
                         help='Do not compress data blocks')
     options = parser.parse_args()
 
-    store = FeedCache()
-    store.load(options.prev)
-    header = gtfs.GtfsHeader()
-    header.version = store.version + 1
-    header.compressed = not options.raw
+    feed = GtfsProto()
+    if options.prev:
+        prev = GtfsProto(options.prev)
+        feed.strings = prev.strings
+        feed.id_store = prev.id_store
+        feed.header.version = prev.header.version + 1
+        feed.header.original_url = prev.header.original_url
+    else:
+        feed.header.version = 1
+
+    feed.header.compressed = not options.raw
     if options.url:
-        header.original_url = options.url
-    fl = FareLinks()
-    blocks = GtfsBlocks(not options.raw)
+        feed.header.original_url = options.url
 
     with ZipFile(options.input, 'r') as z:
-        blocks.run(AgencyPacker(z, store))
-        blocks.run(CalendarPacker(z, store))
-        blocks.run(ShapesPacker(z, store))
-        blocks.run(NetworksPacker(z, store))
-        blocks.run(AreasPacker(z, store))
-        blocks.run(StopsPacker(z, store, fl))
-        r = RoutesPacker(z, store, fl)  # reads itineraries
-        blocks.run(r)
-        blocks.run(TripsPacker(z, store, r.trip_itineraries))
-        blocks.run(TransfersPacker(z, store))
+        run_block(feed, AgencyPacker(z, feed.strings, feed.id_store))
+        run_block(feed, CalendarPacker(z, feed.strings, feed.id_store))
+        run_block(feed, ShapesPacker(z, feed.strings, feed.id_store))
+        run_block(feed, NetworksPacker(z, feed.strings, feed.id_store))
+        run_block(feed, AreasPacker(z, feed.strings, feed.id_store))
+        run_block(feed, StopsPacker(z, feed.strings, feed.id_store, feed.fare_links))
+        r = RoutesPacker(z, feed.strings, feed.id_store, feed.fare_links)  # reads itineraries
+        run_block(feed, r)
+        run_block(feed, TripsPacker(z, feed.strings, feed.id_store, r.trip_itineraries))
+        run_block(feed, TransfersPacker(z, feed.strings, feed.id_store))
 
-    if blocks.not_empty:
-        blocks.add(gtfs.B_STRINGS, store.strings.store())
-        blocks.add(gtfs.B_IDS, store.store())
-        blocks.add(gtfs.B_FARE_LINKS, fl.store())
-        blocks.populate_header(header)
-
-        fn = options.output.replace('%', str(header.version))
-        with open(fn, 'wb') as f:
-            header_data = header.SerializeToString()
-            f.write(struct.pack('<h', len(header_data)))
-            f.write(header_data)
-            for b in blocks:
-                f.write(b)
+    fn = options.output.replace('%', str(feed.header.version))
+    with open(fn, 'wb') as f:
+        feed.write(f)

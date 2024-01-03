@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import TextIO
 from datetime import date
-from .base import BasePacker, FeedCache
+from .base import BasePacker, StringCache, IdReference
 from zipfile import ZipFile
 from .. import gtfs_pb2 as gtfs
 from csv import DictReader
@@ -98,8 +98,8 @@ class CalendarRecord:
 
 
 class CalendarPacker(BasePacker):
-    def __init__(self, z: ZipFile, store: FeedCache):
-        super().__init__(z, store)
+    def __init__(self, z: ZipFile, strings: StringCache, id_store: dict[int, IdReference]):
+        super().__init__(z, strings, id_store)
 
     @property
     def block(self):

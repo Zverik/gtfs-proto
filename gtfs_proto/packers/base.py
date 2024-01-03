@@ -1,5 +1,5 @@
 from .. import gtfs_pb2 as gtfs
-from ..base import FeedCache, IdReference, FareLinks
+from ..base import IdReference, FareLinks, StringCache
 from abc import ABC, abstractmethod
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -9,14 +9,14 @@ from typing import TextIO
 from zipfile import ZipFile
 
 
-__all__ = ['FeedCache', 'BasePacker', 'FareLinks']
+__all__ = ['BasePacker', 'StringCache', 'FareLinks', 'IdReference']
 
 
 class BasePacker(ABC):
-    def __init__(self, z: ZipFile, store: FeedCache):
+    def __init__(self, z: ZipFile, strings: StringCache, id_store: dict[int, IdReference]):
         self.z = z
-        self.id_store = store.id_store
-        self.strings = store.strings
+        self.id_store = id_store
+        self.strings = strings
 
     @property
     @abstractmethod

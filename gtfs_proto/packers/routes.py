@@ -1,4 +1,4 @@
-from .base import BasePacker, FeedCache, FareLinks
+from .base import BasePacker, StringCache, IdReference, FareLinks
 from typing import TextIO
 from zipfile import ZipFile
 from csv import DictReader
@@ -40,8 +40,9 @@ class Trip:
 
 
 class RoutesPacker(BasePacker):
-    def __init__(self, z: ZipFile, store: FeedCache, fl: FareLinks):
-        super().__init__(z, store)
+    def __init__(self, z: ZipFile, strings: StringCache, id_store: dict[int, IdReference],
+                 fl: FareLinks):
+        super().__init__(z, strings, id_store)
         self.fl = fl
         # trip_id → itinerary_id
         self.trip_itineraries: dict[int, int] = {}

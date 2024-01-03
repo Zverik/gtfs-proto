@@ -19,11 +19,11 @@ class GtfsBlocks:
     def clear(self):
         self.blocks = {}
 
-    def populate_header(self, header: gtfs.GtfsHeader):
+    def populate_header(self, header: gtfs.GtfsHeader, compressed: bool = False):
         del header.blocks[:]
         for b in gtfs.Block.values():
             if 0 < b and b < gtfs.B_ITINERARIES:
-                header.blocks.append(len(self.blocks.get(b, b'')))
+                header.blocks.append(len(self.get(b, compressed)))
 
     @property
     def not_empty(self) -> bool:
@@ -101,7 +101,7 @@ class GtfsProto:
                     data = arch.decompress(data)
                 s = gtfs.StringTable()
                 s.ParseFromString(data)
-                self.strings = StringCache(s.strings)
+                self.strings = StringCache(s.strings, s.delta_skip)
             elif b + 1 == gtfs.B_IDS:
                 data = fileobj.read(size)
                 if arch:
@@ -109,7 +109,7 @@ class GtfsProto:
                 store = gtfs.IdStore()
                 store.ParseFromString(data)
                 for idrefs in store.refs:
-                    self.id_store[idrefs.block] = IdReference(idrefs.ids)
+                    self.id_store[idrefs.block] = IdReference(idrefs.ids, idrefs.delta_skip)
             elif read_now:
                 data = fileobj.read(size)
                 self.blocks.add(b + 1, data, self.header.compressed)
@@ -144,6 +144,10 @@ class GtfsProto:
                 fileobj.write(b)
 
     def write(self, fileobj: BinaryIO, compress: bool | None = None):
+        """When compress is None, using the value from the header."""
+        if not self.header.version:
+            raise Exception('Please set version inside the header')
+
         self.store_ids()
         self.store_strings()
         self.store_fare_links()
@@ -157,10 +161,10 @@ class GtfsProto:
         self.store_networks()
         self.store_areas()
 
-        self.blocks.populate_header(self.header)
-
         if compress is not None:
             self.header.compressed = compress
+        self.blocks.populate_header(self.header, self.header.compressed)
+
         header_data = self.header.SerializeToString()
         fileobj.write(struct.pack('<H', len(header_data)))
         fileobj.write(header_data)
@@ -440,18 +444,17 @@ class GtfsDelta(GtfsProto):
         self.header = gtfs.GtfsDeltaHeader()
         self.header.ParseFromString(fileobj.read(header_len))
         self._block_pos = {gtfs.B_HEADER: (2, header_len)}
+        self._was_compressed = self.header.compressed
         self._read_blocks(fileobj, read_now)
 
     def write(self, fileobj: BinaryIO, compress: bool | None = None):
-        """When compress is None, using the source flag or True."""
+        """When compress is None, using the value from the header."""
         if not self.header.old_version or not self.header.version:
             raise Exception('A version in the header is empty')
-        if 'fare_links' in self.__dict__:
-            raise Exception('You have used the fare_links field. Use fare_links_delta instead.')
 
         self.store_ids()
         self.store_strings()
-        self.store_fare_links_delta()
+        self.store_fare_links()
         self.store_agencies()
         self.store_calendar()
         self.store_shapes()
@@ -462,26 +465,27 @@ class GtfsDelta(GtfsProto):
         self.store_networks()
         self.store_areas()
 
-        self.blocks.populate_header(self.header)
-
         if compress is not None:
             self.header.compressed = compress
+        self.blocks.populate_header(self.header, self.header.compressed)
+
         header_data = self.header.SerializeToString()
         fileobj.write(struct.pack('<H', len(header_data) | 0x8000))
         fileobj.write(header_data)
         self._write_blocks(fileobj)
 
     @cached_property
-    def fare_links_delta(self) -> gtfs.FareLinksDelta:
+    def fare_links(self) -> FareLinks:
+        fl = FareLinks()
         data = self._read_block(gtfs.B_FARE_LINKS)
-        if not data:
-            return {}
-        fl = gtfs.FareLinksDelta()
-        fl.ParseFromString(data)
+        if data:
+            f = gtfs.FareLinksDelta()
+            f.ParseFromString(data)
+            fl.load_delta(f)
         return fl
 
-    def store_fare_links_delta(self):
-        if 'fare_links_delta' in self.__dict__:
-            self.blocks.add(gtfs.B_FARE_LINKS, self.fare_links_delta.SerializeToString())
+    def store_fare_links(self):
+        if 'fare_links' in self.__dict__:
+            self.blocks.add(gtfs.B_FARE_LINKS, self.fare_links.store_delta())
         elif self._fileobj:
             self._read_block(gtfs.B_FARE_LINKS)

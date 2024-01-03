@@ -1,11 +1,11 @@
 from zipfile import ZipFile
-from .base import BasePacker, FeedCache
+from .base import BasePacker, StringCache, IdReference
 from .. import gtfs_pb2 as gtfs
 
 
 class AgencyPacker(BasePacker):
-    def __init__(self, z: ZipFile, store: FeedCache):
-        super().__init__(z, store)
+    def __init__(self, z: ZipFile, strings: StringCache, id_store: dict[int, IdReference]):
+        super().__init__(z, strings, id_store)
 
     @property
     def block(self):
@@ -29,8 +29,8 @@ class AgencyPacker(BasePacker):
 
 
 class NetworksPacker(BasePacker):
-    def __init__(self, z: ZipFile, store: FeedCache):
-        super().__init__(z, store)
+    def __init__(self, z: ZipFile, strings: StringCache, id_store: dict[int, IdReference]):
+        super().__init__(z, strings, id_store)
 
     @property
     def block(self):
@@ -46,8 +46,8 @@ class NetworksPacker(BasePacker):
 
 
 class AreasPacker(BasePacker):
-    def __init__(self, z: ZipFile, store: FeedCache):
-        super().__init__(z, store)
+    def __init__(self, z: ZipFile, strings: StringCache, id_store: dict[int, IdReference]):
+        super().__init__(z, strings, id_store)
 
     @property
     def block(self):

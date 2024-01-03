@@ -1,4 +1,4 @@
-from .base import BasePacker, FeedCache
+from .base import BasePacker, StringCache, IdReference
 from typing import TextIO
 from zipfile import ZipFile
 from csv import DictReader
@@ -6,8 +6,8 @@ from .. import gtfs_pb2 as gtfs
 
 
 class ShapesPacker(BasePacker):
-    def __init__(self, z: ZipFile, store: FeedCache):
-        super().__init__(z, store)
+    def __init__(self, z: ZipFile, strings: StringCache, id_store: dict[int, IdReference]):
+        super().__init__(z, strings, id_store)
 
     @property
     def block(self):

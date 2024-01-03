@@ -1,4 +1,4 @@
-from .base import BasePacker, FeedCache
+from .base import BasePacker, StringCache, IdReference
 from typing import TextIO
 from zipfile import ZipFile
 from dataclasses import dataclass
@@ -16,8 +16,9 @@ class StopTime:
 
 
 class TripsPacker(BasePacker):
-    def __init__(self, z: ZipFile, store: FeedCache, trip_itineraries: dict[int, int]):
-        super().__init__(z, store)
+    def __init__(self, z: ZipFile, strings: StringCache, id_store: dict[int, IdReference],
+                 trip_itineraries: dict[int, int]):
+        super().__init__(z, strings, id_store)
         self.trip_itineraries = trip_itineraries  # trip_id -> itinerary_id
 
     @property

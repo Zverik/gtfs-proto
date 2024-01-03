@@ -106,15 +106,16 @@ def print_delta_header(header: gtfs.GtfsDeltaHeader):
     })
 
 
-def print_blocks(blocks: GtfsBlocks):
+def print_blocks(blocks: GtfsBlocks, compressed: bool):
     block_names = {v: s for s, v in BLOCKS.items()}
     for b in blocks.blocks:
         data = blocks.get(b)
         v = {
             'block': block_names[b],
             'size': len(data),
-            'compressed': len(blocks.blocks[b]),
         }
+        if compressed:
+            v['compressed'] = len(blocks.blocks[b])
         v.update(read_count(b, data))
         print(json.dumps(v))
 
@@ -272,72 +273,6 @@ def print_fare_links(fl: FareLinks):
     print(json.dumps({'route_network_ids': fl.route_networks}))
 
 
-def print_fare_links_delta(fl: gtfs.FareLinksDelta):
-    print(json.dumps({'stop_area_ids': {k: v for k, v in fl.stop_area_ids.items()}}))
-    print(json.dumps({'stop_zone_ids': {k: v for k, v in fl.stop_zone_ids.items()}}))
-    print(json.dumps({'route_network_ids': {k: v for k, v in fl.route_network_ids.items()}}))
-
-
-def print_part(part: gtfs.Block, data: bytes):
-    if part == gtfs.B_IDS:
-        ids = gtfs.IdStore()
-        ids.ParseFromString(data)
-        for i in ids.refs:
-            print_id(i)
-    elif part == gtfs.B_AGENCY:
-        agencies = gtfs.Agencies()
-        agencies.ParseFromString(data)
-        for a in agencies.agencies:
-            print_agency(a)
-    elif part == gtfs.B_CALENDAR:
-        calendar = gtfs.Calendar()
-        calendar.ParseFromString(data)
-        print_calendar(calendar)
-    elif part == gtfs.B_SHAPES:
-        shapes = gtfs.Shapes()
-        shapes.ParseFromString(data)
-        for s in shapes.shapes:
-            print_shape(s)
-    elif part == gtfs.B_NETWORKS:
-        networks = gtfs.Networks()
-        networks.ParseFromString(data)
-        print(json.dumps(dict(networks.networks), ensure_ascii=False))
-    elif part == gtfs.B_AREAS:
-        areas = gtfs.Areas()
-        areas.ParseFromString(data)
-        print(json.dumps(dict(areas.areas), ensure_ascii=False))
-    elif part == gtfs.B_STRINGS:
-        strings = gtfs.StringTable()
-        strings.ParseFromString(data)
-        print(json.dumps({i: s for i, s in enumerate(strings.strings)}, ensure_ascii=False))
-    elif part == gtfs.B_STOPS:
-        stops = gtfs.Stops()
-        stops.ParseFromString(data)
-        for s in stops.stops:
-            print_stop(s)
-    elif part == gtfs.B_ROUTES:
-        routes = gtfs.Routes()
-        routes.ParseFromString(data)
-        for r in routes.routes:
-            print_route(r)
-    elif part == gtfs.B_TRIPS:
-        trips = gtfs.Trips()
-        trips.ParseFromString(data)
-        for t in trips.trips:
-            print_trip(t)
-    elif part == gtfs.B_TRANSFERS:
-        transfers = gtfs.Transfers()
-        transfers.ParseFromString(data)
-        for t in transfers.transfers:
-            print_transfer(t)
-    elif part == gtfs.B_FARE_LINKS:
-        fl = gtfs.FareLinks()
-        fl.ParseFromString(data)
-        print_fare_links(fl)
-    else:
-        print('Sorry, printing blocks of this type is not implemented yet.', file=sys.stderr)
-
-
 def info():
     parser = argparse.ArgumentParser(
         description='Print information and contents of a protobuf-compressed GTFS')
@@ -357,7 +292,9 @@ def info():
             print_delta_header(feed.header)
         else:
             print_header(feed.header)
-        print_blocks(feed.blocks)
+        feed.store_strings()
+        feed.store_ids()
+        print_blocks(feed.blocks, feed.header.compressed)
 
     else:
         part = BLOCKS[options.part]
@@ -398,10 +335,7 @@ def info():
             for t in feed.transfers:
                 print_transfer(t)
         elif part == gtfs.B_FARE_LINKS:
-            if isinstance(feed, GtfsDelta):
-                print_fare_links_delta(feed.fare_links_delta)
-            else:
-                print_fare_links(feed.fare_links)
+            print_fare_links(feed.fare_links)
         else:
             print(
                 'Sorry, printing blocks of this type is not implemented yet.',
