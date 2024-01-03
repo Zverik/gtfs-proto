@@ -1,10 +1,7 @@
 import argparse
-import struct
+from .wrapper import GtfsProto, gtfs, GtfsDelta, FareLinks, is_gtfs_delta, GtfsBlocks
 import sys
-import zstandard
-import io
 import json
-from . import gtfs_pb2 as gtfs
 from typing import Any
 
 
@@ -75,13 +72,14 @@ def read_count(block: gtfs.Block, data: bytes) -> dict[str, Any]:
         tr.ParseFromString(data)
         return {COUNT: len(tr.transfers)}
     elif block == gtfs.B_FARE_LINKS:
-        fl = gtfs.FareLinks()
-        fl.ParseFromString(data)
-        return {
-            'stop_zones': len(fl.stop_zone_ids),
-            'stop_areas': len(fl.stop_area_ids),
-            'route_networks': len(fl.route_network_ids),
-        }
+        pass  # TODO
+        # fl = gtfs.FareLinks()
+        # fl.ParseFromString(data)
+        # return {
+        #     'stop_zones': len(fl.stop_zone_ids),
+        #     'stop_areas': len(fl.stop_area_ids),
+        #     'route_networks': len(fl.route_network_ids),
+        # }
     return {}
 
 
@@ -92,24 +90,33 @@ def print_skip_empty(d: dict[str, Any]):
     ))
 
 
-def print_header(header: gtfs.GtfsHeader, fileobj: io.BytesIO):
+def print_header(header: gtfs.GtfsHeader):
     print_skip_empty({
         'version': header.version,
         'original_url': header.original_url,
         'compressed': header.compressed,
     })
-    block_names = {v - 1: s for s, v in BLOCKS.items()}
-    arch = zstandard.ZstdDecompressor()
-    for i in range(len(header.blocks)):
-        if header.blocks[i] > 0:
-            v = {'block': block_names[i], 'size': header.blocks[i]}
-            data = fileobj.read(header.blocks[i])
-            if header.compressed:
-                data = arch.decompress(data)
-                v['compressed'] = v['size']
-                v['size'] = len(data)
-            v.update(read_count(i + 1, data))
-            print(json.dumps(v))
+
+
+def print_delta_header(header: gtfs.GtfsDeltaHeader):
+    print_skip_empty({
+        'old_version': header.old_version,
+        'version': header.version,
+        'compressed': header.compressed,
+    })
+
+
+def print_blocks(blocks: GtfsBlocks):
+    block_names = {v: s for s, v in BLOCKS.items()}
+    for b in blocks.blocks:
+        data = blocks.get(b)
+        v = {
+            'block': block_names[b],
+            'size': len(data),
+            'compressed': len(blocks.blocks[b]),
+        }
+        v.update(read_count(b, data))
+        print(json.dumps(v))
 
 
 def print_id(ids: gtfs.IdReference):
@@ -165,7 +172,7 @@ def print_stop(s: gtfs.Stop):
     print_skip_empty({
         'stop_id': s.stop_id,
         'code': s.code,
-        'name': s.name,
+        'name': s.name or None,
         'desc': s.desc,
         'lon': s.lon,
         'lat': s.lat,
@@ -210,16 +217,16 @@ def print_route(r: gtfs.Route):
     PD_TYPES = ['no', 'yes', 'phone_agency', 'tell_driver']
     print_skip_empty({
         'route_id': r.route_id,
-        'agency_id': r.agency_id,
+        'agency_id': r.agency_id or None,
         'short_name': r.short_name,
-        'long_name': list(r.long_name),
+        'long_name': list(r.long_name) or None,
         'desc': r.desc,
         'type': ROUTE_TYPES[r.type],
         'color': None if not r.color else f'{r.color:#08x}',
         'text_color': None if not r.text_color else f'{r.text_color:#08x}',
         'continuous_pickup': None if not r.continuous_pickup else PD_TYPES[r.continuous_pickup],
         'continuous_dropoff': None if not r.continuous_dropoff else PD_TYPES[r.continuous_dropoff],
-        'itineraries': [prepare_itinerary(i) for i in r.itineraries],
+        'itineraries': [prepare_itinerary(i) for i in r.itineraries] or None,
     })
 
 
@@ -228,8 +235,8 @@ def print_trip(t: gtfs.Trip):
     PD_TYPES = ['no', 'yes', 'phone_agency', 'tell_driver']
     print_skip_empty({
         'trip_id': t.trip_id,
-        'service_id': t.service_id,
-        'itinerary_id': t.itinerary_id,
+        'service_id': t.service_id or None,
+        'itinerary_id': t.itinerary_id or None,
         'short_name': t.short_name,
         'wheelchair': None if not t.wheelchair else ACC_TYPES[t.wheelchair],
         'bikes': None if not t.bikes else ACC_TYPES[t.bikes],
@@ -259,16 +266,16 @@ def print_transfer(t: gtfs.Transfer):
     })
 
 
-def print_fare_links(fl: gtfs.FareLinks):
-    print(json.dumps({
-        'stop_area_ids': {i: v for i, v in enumerate(fl.stop_area_ids) if v}
-    }))
-    print(json.dumps({
-        'stop_zone_ids': {i: v for i, v in enumerate(fl.stop_zone_ids) if v}
-    }))
-    print(json.dumps({
-        'route_network_ids': {i: v for i, v in enumerate(fl.route_network_ids) if v}
-    }))
+def print_fare_links(fl: FareLinks):
+    print(json.dumps({'stop_area_ids': fl.stop_areas}))
+    print(json.dumps({'stop_zone_ids': fl.stop_zones}))
+    print(json.dumps({'route_network_ids': fl.route_networks}))
+
+
+def print_fare_links_delta(fl: gtfs.FareLinksDelta):
+    print(json.dumps({'stop_area_ids': {k: v for k, v in fl.stop_area_ids.items()}}))
+    print(json.dumps({'stop_zone_ids': {k: v for k, v in fl.stop_zone_ids.items()}}))
+    print(json.dumps({'route_network_ids': {k: v for k, v in fl.route_network_ids.items()}}))
 
 
 def print_part(part: gtfs.Block, data: bytes):
@@ -339,26 +346,64 @@ def info():
                         help='Part to dump, header by default')
     options = parser.parse_args()
 
-    header_len = struct.unpack('<h', options.input.read(2))[0]
-    header = gtfs.GtfsHeader()
-    header.ParseFromString(options.input.read(header_len))
+    if is_gtfs_delta(options.input):
+        feed: GtfsProto | GtfsDelta = GtfsDelta(options.input)
+    else:
+        feed = GtfsProto(options.input)
 
     if not options.part:
-        print_header(header, options.input)
+        feed.read_all()
+        if isinstance(feed, GtfsDelta):
+            print_delta_header(feed.header)
+        else:
+            print_header(feed.header)
+        print_blocks(feed.blocks)
 
     else:
-        # First read the block
         part = BLOCKS[options.part]
-        for b, size in enumerate(header.blocks):
-            if b + 1 != part:
-                if size > 0:
-                    options.input.seek(size, 1)
+        if part == gtfs.B_IDS:
+            block_names = {v: s for s, v in BLOCKS.items()}
+            for b, ids in feed.id_store.items():
+                print_skip_empty({
+                    'block': block_names.get(b, str(b)),
+                    'ids': {i: s for s, i in ids.ids.items()},
+                })
+        elif part == gtfs.B_AGENCY:
+            for a in feed.agencies.values():
+                print_agency(a)
+        elif part == gtfs.B_CALENDAR:
+            print_calendar(feed.calendar)
+        elif part == gtfs.B_SHAPES:
+            for s in feed.shapes.values():
+                print_shape(s)
+        elif part == gtfs.B_NETWORKS:
+            print(json.dumps(feed.networks, ensure_ascii=False))
+        elif part == gtfs.B_AREAS:
+            print(json.dumps(feed.areas, ensure_ascii=False))
+        elif part == gtfs.B_STRINGS:
+            print(json.dumps(
+                {i: s for i, s in enumerate(feed.strings.strings)},
+                ensure_ascii=False
+            ))
+        elif part == gtfs.B_STOPS:
+            for s in feed.stops.values():
+                print_stop(s)
+        elif part == gtfs.B_ROUTES:
+            for r in feed.routes.values():
+                print_route(r)
+        elif part == gtfs.B_TRIPS:
+            for t in feed.trips.values():
+                print_trip(t)
+        elif part == gtfs.B_TRANSFERS:
+            for t in feed.transfers:
+                print_transfer(t)
+        elif part == gtfs.B_FARE_LINKS:
+            if isinstance(feed, GtfsDelta):
+                print_fare_links_delta(feed.fare_links_delta)
             else:
-                if size > 0:
-                    data = options.input.read(size)
-                    if header.compressed:
-                        arch = zstandard.ZstdDecompressor()
-                        data = arch.decompress(data)
-                    print_part(b + 1, data)
-                else:
-                    print(f'Block {options.part} is empty.', file=sys.stderr)
+                print_fare_links(feed.fare_links)
+        else:
+            print(
+                'Sorry, printing blocks of this type is not implemented yet.',
+                file=sys.stderr
+            )

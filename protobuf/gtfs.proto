@@ -50,9 +50,9 @@ message GtfsHeader {
 }
 
 /* All identifiers are renumbered, starting from 1.
-We do not keep any of original identifiers, so matching
+We do not keep any of original identifiers, so to match
 the data with an OpenTripPlanner instance, for example,
-would be tricky. Still. */
+use the IdStore tables. */
 
 message Agencies {
   repeated Agency agencies = 1;
@@ -109,7 +109,7 @@ message Shape {
   // Numbers multiplied by 100000 (1e5) and rounded.
   // Mind the accumulated rounding error!
   // Each number is the difference with the last.
-  // First is difference with 0 or the last from the last shape.
+  // First is difference with 0 or the last from the last non-empty shape.
   repeated sint32 longitudes = 2;
   repeated sint32 latitudes = 3;
 }
@@ -132,7 +132,8 @@ message Stops {
   repeated Stop stops = 1;
 }
 
-// Here missing optional fields means the value is copied from the previous one.
+// Lat and lon are differences from the last non-empty stop position
+// (non-empty means, which has non-zero lon or lat).
 message Stop {
   uint32 stop_id = 1; // this one is generated for this feed
   string code = 2;

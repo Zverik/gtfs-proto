@@ -3,10 +3,12 @@ import zstandard
 from . import gtfs_pb2 as gtfs
 from .base import StringCache, FareLinks, IdReference
 from typing import BinaryIO
+from collections.abc import Generator
 from functools import cached_property
 
 
-__all__ = ['gtfs', 'GtfsProto', 'GtfsDelta', 'FareLinks']
+__all__ = ['gtfs', 'GtfsBlocks', 'GtfsProto', 'GtfsDelta',
+           'FareLinks', 'is_gtfs_delta']
 
 
 class GtfsBlocks:
@@ -24,15 +26,15 @@ class GtfsBlocks:
                 header.blocks.append(len(self.blocks.get(b, b'')))
 
     @property
-    def not_empty(self):
+    def not_empty(self) -> bool:
         return any(self.blocks.values())
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[bytes, None, None]:
         for b in sorted(self.blocks):
             if self.blocks[b]:
                 yield self.blocks[b]
 
-    def decompressed(self):
+    def decompressed(self) -> Generator[bytes, None, None]:
         dearch = zstandard.ZstdDecompressor()
         for b in sorted(self.blocks):
             if self.blocks[b]:
@@ -52,6 +54,13 @@ class GtfsBlocks:
         return dearch.decompress(self.blocks[block])
 
 
+def is_gtfs_delta(fileobj: BinaryIO) -> bool:
+    fileobj.seek(0)
+    header_len = struct.unpack('<H', fileobj.read(2))[0]
+    fileobj.seek(0)
+    return header_len & 0x8000 > 0
+
+
 class GtfsProto:
     def __init__(self, fileobj: BinaryIO | None = None, read_now: bool = False):
         self.header = gtfs.GtfsHeader()
@@ -59,9 +68,8 @@ class GtfsProto:
         self.strings = StringCache()
         self.id_store: dict[int, IdReference] = {
             b: IdReference() for b in gtfs.Block.values()}
-        self.fare_links = FareLinks()
 
-        self._blocks = GtfsBlocks()
+        self.blocks = GtfsBlocks()
         # position, size
         self._block_pos: dict[gtfs.Block, tuple[int, int]] = {}
         self._fileobj = None if read_now else fileobj
@@ -75,8 +83,7 @@ class GtfsProto:
         self.strings.clear()
         for k in self.id_store:
             self.id_store[k].clear()
-        self.fare_links.clear()
-        self._blocks.clear()
+        self.blocks.clear()
         self._block_pos = {}
 
     def _read_blocks(self, fileobj: BinaryIO, read_now: bool):
@@ -105,13 +112,21 @@ class GtfsProto:
                     self.id_store[idrefs.block] = IdReference(idrefs.ids)
             elif read_now:
                 data = fileobj.read(size)
-                self._blocks.add(b + 1, data, self.header.compressed)
+                self.blocks.add(b + 1, data, self.header.compressed)
             else:
                 fileobj.seek(size, 1)
 
+    def read_all(self):
+        if not self._fileobj:
+            return
+        for b in self._block_pos:
+            if b not in (gtfs.B_STRINGS, gtfs.B_IDS, gtfs.B_HEADER):
+                self._read_block(b, True)
+        self._fileobj = None
+
     def read(self, fileobj: BinaryIO, read_now: bool = False):
         self.clear()
-        header_len = struct.unpack('<h', fileobj.read(2))[0]
+        header_len = struct.unpack('<H', fileobj.read(2))[0]
         if header_len & 0x8000 > 0:
             raise Exception('The file is delta, not a regular feed.')
         self.header = gtfs.GtfsHeader()
@@ -122,10 +137,10 @@ class GtfsProto:
 
     def _write_blocks(self, fileobj: BinaryIO):
         if self.header.compressed:
-            for b in self._blocks:
+            for b in self.blocks:
                 fileobj.write(b)
         else:
-            for b in self._blocks.decompressed():
+            for b in self.blocks.decompressed():
                 fileobj.write(b)
 
     def write(self, fileobj: BinaryIO, compress: bool | None = None):
@@ -142,20 +157,17 @@ class GtfsProto:
         self.store_networks()
         self.store_areas()
 
-        self._blocks.populate_header(self.header)
+        self.blocks.populate_header(self.header)
 
         if compress is not None:
             self.header.compressed = compress
         header_data = self.header.SerializeToString()
-        fileobj.write(struct.pack('<h', len(header_data)))
+        fileobj.write(struct.pack('<H', len(header_data)))
         fileobj.write(header_data)
         self._write_blocks(fileobj)
 
     def store_strings(self):
-        self._blocks.add(gtfs.B_STRINGS, self.strings.store())
-
-    def store_fare_links(self):
-        self._blocks.add(gtfs.B_FARE_LINKS, self.fare_links.store())
+        self.blocks.add(gtfs.B_STRINGS, self.strings.store())
 
     def store_ids(self):
         idstore = gtfs.IdStore()
@@ -167,25 +179,25 @@ class GtfsProto:
                     delta_skip=ids.delta_skip,
                 )
                 idstore.refs.append(idrefs)
-        self._blocks.add(gtfs.B_IDS, idstore.SerializeToString())
+        self.blocks.add(gtfs.B_IDS, idstore.SerializeToString())
 
-    def read_block(self, block: gtfs.Block, compressed: bool = False) -> bytes | None:
-        if block in self._blocks:
-            return self._blocks.get(block, compressed)
+    def _read_block(self, block: gtfs.Block, compressed: bool = False) -> bytes | None:
+        if block in self.blocks:
+            return self.blocks.get(block, compressed)
         if not self._fileobj or block not in self._block_pos:
             return None
         bseek, bsize = self._block_pos[block]
         self._fileobj.seek(bseek)
         data = self._fileobj.read(bsize)
-        self._blocks.add(block, data, self._was_compressed)
+        self.blocks.add(block, data, self._was_compressed)
         if self._was_compressed and not compressed:
             arch = zstandard.ZstdDecompressor()
             data = arch.decompress(data)
-        return data if not compressed else self._blocks.get(block, True)
+        return data if not compressed else self.blocks.get(block, True)
 
     @cached_property
     def agencies(self) -> dict[int, gtfs.Agency]:
-        data = self.read_block(gtfs.B_AGENCY)
+        data = self._read_block(gtfs.B_AGENCY)
         if not data:
             return {}
         ag = gtfs.Agencies()
@@ -195,13 +207,13 @@ class GtfsProto:
     def store_agencies(self):
         if 'agencies' in self.__dict__:
             ag = gtfs.Agencies(agencies=self.agencies.values())
-            self._blocks.add(gtfs.B_AGENCY, ag.SerializeToString())
+            self.blocks.add(gtfs.B_AGENCY, ag.SerializeToString())
         elif self._fileobj:
-            self.read_block(gtfs.B_AGENCY, True)
+            self._read_block(gtfs.B_AGENCY, True)
 
     @cached_property
     def calendar(self) -> gtfs.Calendar:
-        data = self.read_block(gtfs.B_CALENDAR)
+        data = self._read_block(gtfs.B_CALENDAR)
         calendar = gtfs.Calendar()
         if not data:
             return calendar
@@ -210,47 +222,105 @@ class GtfsProto:
 
     def store_calendar(self):
         if 'calendar' in self.__dict__:
-            self._blocks.add(gtfs.B_CALENDAR, self.calendar.SerializeToString())
+            self.blocks.add(gtfs.B_CALENDAR, self.calendar.SerializeToString())
         elif self._fileobj:
-            self.read_block(gtfs.B_CALENDAR, True)
+            self._read_block(gtfs.B_CALENDAR, True)
+
+    def get_shape_last(
+            self, shape: gtfs.Shape,
+            prev_last: tuple[int, int] = (0, 0)) -> tuple[int, int]:
+        lon = shape.longitudes[0] + prev_last[0]
+        lat = shape.latitudes[0] + prev_last[1]
+        for i in range(1, len(shape.longitudes)):
+            lon += shape.longitudes[i]
+            lat += shape.latitudes[i]
+        return (lon, lat)
 
     @cached_property
-    def shapes(self) -> dict[int, gtfs.TripShape]:
-        data = self.read_block(gtfs.B_SHAPES)
+    def shapes(self) -> dict[int, gtfs.Shape]:
+        data = self._read_block(gtfs.B_SHAPES)
         if not data:
             return {}
         shapes = gtfs.Shapes()
         shapes.ParseFromString(data)
-        return {s.shape_id: s for s in shapes.shapes}
+
+        # Decouple shapes.
+        result: dict[int, gtfs.Shape] = {}
+        prev_last: tuple[int, int] = (0, 0)
+        for s in shapes.shapes:
+            if s.longitudes:
+                s.longitudes[0] += prev_last[0]
+                s.latitudes[0] += prev_last[1]
+                prev_last = self.get_shape_last(s)
+            result[s.shape_id] = s
+        return result
 
     def store_shapes(self):
         if 'shapes' in self.__dict__:
+            # Make the sequence.
+            shapes: list[gtfs.Shape] = []
+            prev_last: tuple[int, int] = (0, 0)
+            for shape_id in sorted(self.shapes):
+                s = self.shapes[shape_id]
+                if s.shape_id != shape_id:
+                    raise IndexError(f'Shape {s.shape_id} is stored under the key {shape_id}!')
+                if s.longitudes:
+                    s.longitudes[0] -= prev_last[0]
+                    s.latitudes[0] -= prev_last[1]
+                    prev_last = self.get_shape_last(s, prev_last)
+                shapes.append(s)
+
             # Compress the data.
-            sh = gtfs.Shapes(shapes=self.shapes.values())
-            self._blocks.add(gtfs.B_SHAPES, sh.SerializeToString())
+            sh = gtfs.Shapes(shapes=shapes)
+            self.blocks.add(gtfs.B_SHAPES, sh.SerializeToString())
         elif self._fileobj:
             # Off chance it's not read, re-read.
-            self.read_block(gtfs.B_SHAPES, True)
+            self._read_block(gtfs.B_SHAPES, True)
 
     @cached_property
     def stops(self) -> dict[int, gtfs.Stop]:
-        data = self.read_block(gtfs.B_STOPS)
+        data = self._read_block(gtfs.B_STOPS)
         if not data:
             return {}
         stops = gtfs.Stops()
         stops.ParseFromString(data)
-        return {s.stop_id: s for s in stops.stops}
+
+        # Decouple stops.
+        result: dict[int, gtfs.Stop] = {}
+        prev_coord: tuple[int, int] = (0, 0)
+        for s in stops.stops:
+            if s.lon and s.lat:
+                s.lon += prev_coord[0]
+                s.lat += prev_coord[1]
+                prev_coord = (s.lon, s.lat)
+            result[s.stop_id] = s
+        return result
 
     def store_stops(self):
         if 'stops' in self.__dict__:
-            st = gtfs.Stops(stops=self.stops.values())
-            self._blocks.add(gtfs.B_STOPS, st.SerializeToString())
+            # Make the sequence.
+            stops: list[gtfs.Stop] = []
+            prev_coord: tuple[int, int] = (0, 0)
+            for stop_id in sorted(self.stops):
+                s = self.stops[stop_id]
+                if s.stop_id != stop_id:
+                    raise IndexError(f'Stop {s.stop_id} is stored under the key {stop_id}!')
+                if s.lon and s.lat:
+                    pc = (s.lon, s.lat)
+                    s.lon -= prev_coord[0]
+                    s.lat -= prev_coord[1]
+                    prev_coord = pc
+                stops.append(s)
+
+            # Compress the data.
+            st = gtfs.Stops(stops=stops)
+            self.blocks.add(gtfs.B_STOPS, st.SerializeToString())
         elif self._fileobj:
-            self.read_block(gtfs.B_STOPS, True)
+            self._read_block(gtfs.B_STOPS, True)
 
     @cached_property
     def routes(self) -> dict[int, gtfs.Route]:
-        data = self.read_block(gtfs.B_ROUTES)
+        data = self._read_block(gtfs.B_ROUTES)
         if not data:
             return {}
         routes = gtfs.Routes()
@@ -260,13 +330,13 @@ class GtfsProto:
     def store_routes(self):
         if 'routes' in self.__dict__:
             r = gtfs.Routes(routes=self.routes.values())
-            self._blocks.add(gtfs.B_ROUTES, r.SerializeToString())
+            self.blocks.add(gtfs.B_ROUTES, r.SerializeToString())
         elif self._fileobj:
-            self.read_block(gtfs.B_ROUTES, True)
+            self._read_block(gtfs.B_ROUTES, True)
 
     @cached_property
     def trips(self) -> dict[int, gtfs.Trip]:
-        data = self.read_block(gtfs.B_TRIPS)
+        data = self._read_block(gtfs.B_TRIPS)
         if not data:
             return {}
         trips = gtfs.Trips()
@@ -276,13 +346,13 @@ class GtfsProto:
     def store_trips(self):
         if 'trips' in self.__dict__:
             t = gtfs.Trips(trips=self.trips.values())
-            self._blocks.add(gtfs.B_TRIPS, t.SerializeToString())
+            self.blocks.add(gtfs.B_TRIPS, t.SerializeToString())
         elif self._fileobj:
-            self.read_block(gtfs.B_TRIPS, True)
+            self._read_block(gtfs.B_TRIPS, True)
 
     @cached_property
     def transfers(self) -> list[gtfs.Transfer]:
-        data = self.read_block(gtfs.B_TRANSFERS)
+        data = self._read_block(gtfs.B_TRANSFERS)
         if not data:
             return []
         tr = gtfs.Transfers()
@@ -292,13 +362,13 @@ class GtfsProto:
     def store_transfers(self):
         if 'transfers' in self.__dict__:
             tr = gtfs.Transfers(transfers=self.transfers)
-            self._blocks.add(gtfs.B_TRANSFERS, tr.SerializeToString())
+            self.blocks.add(gtfs.B_TRANSFERS, tr.SerializeToString())
         elif self._fileobj:
-            self.read_block(gtfs.B_TRANSFERS, True)
+            self._read_block(gtfs.B_TRANSFERS, True)
 
     @cached_property
     def networks(self) -> dict[int, str]:
-        data = self.read_block(gtfs.B_NETWORKS)
+        data = self._read_block(gtfs.B_NETWORKS)
         if not data:
             return {}
         networks = gtfs.Networks()
@@ -308,13 +378,13 @@ class GtfsProto:
     def store_networks(self):
         if 'networks' in self.__dict__:
             networks = gtfs.Networks(networks=self.networks)
-            self._blocks.add(gtfs.B_NETWORKS, networks.SerializeToString())
+            self.blocks.add(gtfs.B_NETWORKS, networks.SerializeToString())
         elif self._fileobj:
-            self.read_block(gtfs.B_NETWORKS)
+            self._read_block(gtfs.B_NETWORKS)
 
     @cached_property
     def areas(self) -> dict[int, str]:
-        data = self.read_block(gtfs.B_AREAS)
+        data = self._read_block(gtfs.B_AREAS)
         if not data:
             return {}
         areas = gtfs.Areas()
@@ -324,9 +394,25 @@ class GtfsProto:
     def store_areas(self):
         if 'areas' in self.__dict__:
             areas = gtfs.Areas(areas=self.areas)
-            self._blocks.add(gtfs.B_AREAS, areas.SerializeToString())
+            self.blocks.add(gtfs.B_AREAS, areas.SerializeToString())
         elif self._fileobj:
-            self.read_block(gtfs.B_AREAS)
+            self._read_block(gtfs.B_AREAS)
+
+    @cached_property
+    def fare_links(self) -> FareLinks:
+        fl = FareLinks()
+        data = self._read_block(gtfs.B_FARE_LINKS)
+        if data:
+            f = gtfs.FareLinks()
+            f.ParseFromString(data)
+            fl.load(f)
+        return fl
+
+    def store_fare_links(self):
+        if 'fare_links' in self.__dict__:
+            self.blocks.add(gtfs.B_FARE_LINKS, self.fare_links.store())
+        elif self._fileobj:
+            self._read_block(gtfs.B_FARE_LINKS)
 
 
 class GtfsDelta(GtfsProto):
@@ -337,7 +423,7 @@ class GtfsDelta(GtfsProto):
         self.id_store: dict[int, IdReference] = {
             b: IdReference() for b in gtfs.Block.values()}
 
-        self._blocks = GtfsBlocks()
+        self.blocks = GtfsBlocks()
         # position, size
         self._block_pos: dict[gtfs.Block, tuple[int, int]] = {}
         self._fileobj = None if read_now else fileobj
@@ -347,7 +433,7 @@ class GtfsDelta(GtfsProto):
 
     def read(self, fileobj: BinaryIO, read_now: bool = False):
         self.clear()
-        header_len = struct.unpack('<h', fileobj.read(2))[0]
+        header_len = struct.unpack('<H', fileobj.read(2))[0]
         if header_len & 0x8000 == 0:
             raise Exception('The file is a regular feed, not a delta.')
         header_len &= 0x7FFF
@@ -376,18 +462,18 @@ class GtfsDelta(GtfsProto):
         self.store_networks()
         self.store_areas()
 
-        self._blocks.populate_header(self.header)
+        self.blocks.populate_header(self.header)
 
         if compress is not None:
             self.header.compressed = compress
         header_data = self.header.SerializeToString()
-        fileobj.write(struct.pack('<h', len(header_data) & 0x8000))
+        fileobj.write(struct.pack('<H', len(header_data) | 0x8000))
         fileobj.write(header_data)
         self._write_blocks(fileobj)
 
     @cached_property
     def fare_links_delta(self) -> gtfs.FareLinksDelta:
-        data = self.read_block(gtfs.B_FARE_LINKS)
+        data = self._read_block(gtfs.B_FARE_LINKS)
         if not data:
             return {}
         fl = gtfs.FareLinksDelta()
@@ -396,6 +482,6 @@ class GtfsDelta(GtfsProto):
 
     def store_fare_links_delta(self):
         if 'fare_links_delta' in self.__dict__:
-            self._blocks.add(gtfs.B_FARE_LINKS, self.fare_links_delta.SerializeToString())
+            self.blocks.add(gtfs.B_FARE_LINKS, self.fare_links_delta.SerializeToString())
         elif self._fileobj:
-            self.read_block(gtfs.B_FARE_LINKS)
+            self._read_block(gtfs.B_FARE_LINKS)
