@@ -78,16 +78,14 @@ message Calendar {
   uint32 base_date = 1;
 
   // Most holidays will be the same I guess.
-  repeated CalendarDates dates = 2;
+  repeated CalendarDates dates = 2; // first is empty
   repeated CalendarService services = 3;
 }
 
 message CalendarDates {
-  uint32 days_id = 1;
-
   // First is offset from base_date, each consequtive
   // is stored as an offset to previous.
-  repeated uint32 dates = 2;
+  repeated uint32 dates = 1;
 }
 
 message CalendarService {
@@ -97,15 +95,15 @@ message CalendarService {
   uint32 weekdays = 4; // binary: 1 for Monday, 2 for Tuesday, 4 for Wednesday etc.
 
   // These fields come from calendar_days.txt.
-  uint32 added_days = 5; // references CalendarDays
-  uint32 removed_days = 6; // references CalendarDays
+  uint32 added_days = 5; // references CalendarDates
+  uint32 removed_days = 6; // references CalendarDates
 }
 
 message Shapes {
-  repeated TripShape shapes = 1;
+  repeated Shape shapes = 1;
 }
 
-message TripShape {
+message Shape {
   uint32 shape_id = 1;
 
   // Numbers multiplied by 100000 (1e5) and rounded.
@@ -328,7 +326,7 @@ enum Block {
   // First, dictionaries that are referenced by other tables.
   B_AGENCY = 3;   // Agencies → Agency
   B_CALENDAR = 4; // Calendar
-  B_SHAPES = 5;   // Shapes → TripShape
+  B_SHAPES = 5;   // Shapes → Shape
 
   // And here, the core: stops, routes, and fares.
   B_STOPS = 6;     // Stops → Stop
@@ -367,10 +365,11 @@ message GtfsDeltaHeader {
 // Agencies: zero element for same, non-zero for change or addition.
 
 // Calendar: first, base_date is applied only to new and changed records.
-// CalendarDates: included only deleted, changed, and new. All the same: id + empty or non-empty list.
+// CalendarDates: rebuilt from scratch using old dates and new/changed.
+//   Keep indices for changed, allow empty lists.
 // CalendarService: not deleting anything; new and changes specify every field.
 
-// Shapes: TripShape with just an id to delete, with locations - change or add.
+// Shapes: Shape with just an id to delete, with locations - change or add.
 
 // Stops: Stop with just an id to delete, with a new id to add, with existing -
 // empty fields stay the same. Fields "wheelchair" and "type" are always set for changed.

@@ -207,12 +207,7 @@ class CalendarPacker(BasePacker):
         calendar.base_date = base_date
 
         if dates:
-            for i, date_list in enumerate(dates.lists):
-                if i > 0:
-                    calendar.dates.append(gtfs.CalendarDates(
-                        days_id=i,
-                        dates=date_list,
-                    ))
+            calendar.dates.extend([gtfs.CalendarDates(dates=d) for d in dates.lists])
 
         sids = self.ids.reversed()
         for service_id, service in services.items():

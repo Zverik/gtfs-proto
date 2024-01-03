@@ -51,7 +51,7 @@ class ShapesPacker(BasePacker):
 
         sh = gtfs.Shapes()
         for shape in shapes:
-            sh.shapes.append(gtfs.TripShape(
+            sh.shapes.append(gtfs.Shape(
                 shape_id=shape[0],
                 longitudes=shape[1],
                 latitudes=shape[2],

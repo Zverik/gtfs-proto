@@ -151,7 +151,7 @@ def print_calendar(c: gtfs.Calendar):
         })
 
 
-def print_shape(s: gtfs.TripShape):
+def print_shape(s: gtfs.Shape):
     print(json.dumps({
         'shape_id': s.shape_id,
         'longitudes': list(s.longitudes),
@@ -337,9 +337,6 @@ def info():
     parser.add_argument('input', type=argparse.FileType('rb'), help='Source file')
     parser.add_argument('-p', '--part', choices=BLOCKS.keys(),
                         help='Part to dump, header by default')
-    parser.add_argument('-f', '--format', action='store_true',
-                        help='Instead of single-line json, make the output readable')
-    parser.add_argument('-o', '--output', help='Output file, stdout by default')
     options = parser.parse_args()
 
     header_len = struct.unpack('<h', options.input.read(2))[0]

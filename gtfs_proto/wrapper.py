@@ -6,7 +6,7 @@ from typing import BinaryIO
 from functools import cached_property
 
 
-__all__ = ['gtfs', 'GtfsProto', 'GtfsDelta']
+__all__ = ['gtfs', 'GtfsProto', 'GtfsDelta', 'FareLinks']
 
 
 class GtfsBlocks:
@@ -360,10 +360,12 @@ class GtfsDelta(GtfsProto):
         """When compress is None, using the source flag or True."""
         if not self.header.old_version or not self.header.version:
             raise Exception('A version in the header is empty')
+        if 'fare_links' in self.__dict__:
+            raise Exception('You have used the fare_links field. Use fare_links_delta instead.')
 
         self.store_ids()
         self.store_strings()
-        self.store_fare_links()
+        self.store_fare_links_delta()
         self.store_agencies()
         self.store_calendar()
         self.store_shapes()
@@ -383,5 +385,17 @@ class GtfsDelta(GtfsProto):
         fileobj.write(header_data)
         self._write_blocks(fileobj)
 
-    def store_fare_links(self):
-        self._blocks.add(gtfs.B_FARE_LINKS, b'')  # TODO
+    @cached_property
+    def fare_links_delta(self) -> gtfs.FareLinksDelta:
+        data = self.read_block(gtfs.B_FARE_LINKS)
+        if not data:
+            return {}
+        fl = gtfs.FareLinksDelta()
+        fl.ParseFromString(data)
+        return fl
+
+    def store_fare_links_delta(self):
+        if 'fare_links_delta' in self.__dict__:
+            self._blocks.add(gtfs.B_FARE_LINKS, self.fare_links_delta.SerializeToString())
+        elif self._fileobj:
+            self.read_block(gtfs.B_FARE_LINKS)
