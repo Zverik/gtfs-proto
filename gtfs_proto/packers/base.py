@@ -50,3 +50,42 @@ class BasePacker(ABC):
                 ids.add(row[id_column]),
                 row[id_column],
             )
+
+    def sequence_reader(self, fileobj: TextIO, id_column: str,
+                        seq_column: str, ids_block: int | None = None,
+                        max_overlapping: int = 2,
+                        ) -> Generator[tuple[list[dict], int, str], None, None]:
+        cur_ids: list[int] = []
+        cur_lists: list[list[tuple[int, str, dict]]] = []
+        seen_ids: set[int] = set()
+        for row, row_id, orig_id in self.table_reader(fileobj, id_column, ids_block):
+            # Find the row_id index. From the tail, because latest ids are appended there.
+            idx = -1
+            for i in reversed(range(len(cur_ids))):
+                if cur_ids[i] == row_id:
+                    idx = i
+                    break
+
+            if idx < 0:
+                # Not found: dump the oldest sequence and add the new one.
+                if row_id in seen_ids:
+                    raise ValueError(
+                        f'Unsorted sequence file, {id_column} {orig_id} is in two parts')
+                seen_ids.add(row_id)
+
+                if len(cur_ids) >= max_overlapping:
+                    last_id = cur_ids.pop(0)
+                    last_rows = cur_lists.pop(0)
+                    last_rows.sort(key=lambda r: r[0])
+                    yield [r[2] for r in last_rows], last_id, last_rows[0][1]
+
+                cur_ids.append(row_id)
+                cur_lists.append([])
+                idx = len(cur_ids) - 1
+
+            cur_lists[idx].append((int(row[seq_column]), orig_id, row))
+
+        for i, row_id in enumerate(cur_ids):
+            rows = cur_lists[i]
+            rows.sort(key=lambda r: r[0])
+            yield [r[2] for r in rows], row_id, rows[0][1]

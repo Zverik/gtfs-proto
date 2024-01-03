@@ -1,7 +1,6 @@
 from .base import BasePacker, StringCache, IdReference, FareLinks
 from typing import TextIO
 from zipfile import ZipFile
-from csv import DictReader
 from collections import defaultdict
 from dataclasses import dataclass
 from hashlib import md5
@@ -103,11 +102,11 @@ class RoutesPacker(BasePacker):
         for row, network_id, _ in self.table_reader(fileobj, 'network_id', gtfs.B_NETWORKS):
             self.fl.route_networks[self.ids.add(row['route_id'])] = network_id
 
-    def read_itineraries(self, fileobj: TextIO, trip_stops: dict[str, list[StopData]]
+    def read_itineraries(self, fileobj: TextIO, trip_stops: dict[int, list[StopData]]
                          ) -> tuple[dict[str, list[gtfs.RouteItinerary]], dict[int, int]]:
         trips: dict[str, list[Trip]] = defaultdict(list)  # route_id -> list[Trip]
         for row, trip_id, orig_trip_id in self.table_reader(fileobj, 'trip_id', gtfs.B_TRIPS):
-            stops = trip_stops.get(orig_trip_id)
+            stops = trip_stops.get(trip_id)
             if not stops:
                 continue
             shape_id = (None if not row.get('shape_id')
@@ -140,29 +139,16 @@ class RoutesPacker(BasePacker):
 
         return result, trip_itineraries
 
-    def read_trip_stops(self, fileobj: TextIO) -> dict[str, list[StopData]]:
-        trip_stops: dict[str, list[StopData]] = {}  # trip_id -> int_stop_id, string_id
-        cur_trip: str = ''
-        cur_stops: list[StopData] = []
-        for row in DictReader(fileobj):
-            if row['trip_id'] != cur_trip:
-                if cur_stops and cur_trip:
-                    cur_stops.sort(key=lambda s: s.seq_id)
-                    if cur_trip in trip_stops:
-                        raise ValueError(
-                            f'Unsorted stop_times.txt, trip {cur_trip} is in two parts')
-                    trip_stops[cur_trip] = cur_stops
-                cur_trip = row['trip_id']
-                cur_stops = []
-            cur_stops.append(StopData(
+    def read_trip_stops(self, fileobj: TextIO) -> dict[int, list[StopData]]:
+        trip_stops: dict[int, list[StopData]] = {}  # trip_id -> int_stop_id, string_id
+        for rows, trip_id, orig_trip_id in self.sequence_reader(
+                fileobj, 'trip_id', 'stop_sequence', gtfs.B_TRIPS):
+            trip_stops[trip_id] = [StopData(
                 seq_id=int(row['stop_sequence']),
                 # The stop should be already in the table.
                 stop_id=self.id_store[gtfs.B_STOPS].ids[row['stop_id']],
                 headsign=self.strings.add(row.get('stop_headsign')),
-            ))
-        if cur_stops and cur_trip:
-            cur_stops.sort(key=lambda s: s.seq_id)
-            trip_stops[cur_trip] = cur_stops
+            ) for row in rows]
         return trip_stops
 
     def route_type_to_enum(self, t: int) -> int:

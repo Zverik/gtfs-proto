@@ -1,7 +1,6 @@
 from .base import BasePacker, StringCache, IdReference
 from typing import TextIO
 from zipfile import ZipFile
-from csv import DictReader
 from .. import gtfs_pb2 as gtfs
 
 
@@ -18,42 +17,26 @@ class ShapesPacker(BasePacker):
             return self.prepare(f)
 
     def prepare(self, fileobj: TextIO) -> bytes:
-        last_point: tuple[int, int] = (0, 0)
+        last_point: list[int] = [0, 0]
 
-        def pack_points(points: list[tuple[int, int, int]]) -> tuple[list[int], list[int]]:
+        def pack_coords(coords: list[float], lp_idx: int) -> list[int]:
             nonlocal last_point
-            points.sort(key=lambda pt: pt[2])
-            pts: tuple[list[int], list[int]] = (
-                [points[0][0] - last_point[0]], [points[0][1] - last_point[1]])
+            points = [round(float(c) * 100000) for c in coords]
+            lp = last_point[lp_idx]
+            pts: list[int] = [points[0] - lp]
             for i in range(1, len(points)):
-                for j in (0, 1):
-                    pts[j].append(points[i][j] - points[i-1][j])
-            last_point = points[-1][:2]
+                pts.append(points[i] - points[i-1])
+            last_point[lp_idx] = points[-1]
             return pts
 
-        # First build the points.
-        shapes: list[tuple[int, list[int], list[int]]] = []
-        points: list[tuple[int, int, int]] = []
-        cur_shape: str | None = None
-        for row in DictReader(fileobj):
-            if cur_shape != row['shape_id']:
-                if len(points) >= 2 and cur_shape:
-                    shapes.append((self.ids.add(cur_shape), *pack_points(points)))
-                cur_shape = row['shape_id']
-                points = []
-            points.append((
-                round(float(row['shape_pt_lon']) * 100000),
-                round(float(row['shape_pt_lat']) * 100000),
-                int(row['shape_pt_sequence']),
-            ))
-        if len(points) >= 2 and cur_shape:
-            shapes.append((self.ids.add(cur_shape), *pack_points(points)))
-
         sh = gtfs.Shapes()
-        for shape in shapes:
-            sh.shapes.append(gtfs.Shape(
-                shape_id=shape[0],
-                longitudes=shape[1],
-                latitudes=shape[2],
-            ))
+        for rows, shape_id, _ in self.sequence_reader(
+                fileobj, 'shape_id', 'shape_pt_sequence', max_overlapping=1):
+            if len(rows) >= 2:
+                sh.shapes.append(gtfs.Shape(
+                    shape_id=shape_id,
+                    longitudes=pack_coords([row['shape_pt_lon'] for row in rows], 0),
+                    latitudes=pack_coords([row['shape_pt_lat'] for row in rows], 1),
+                ))
+
         return sh.SerializeToString()

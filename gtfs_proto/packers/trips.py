@@ -55,31 +55,26 @@ class TripsPacker(BasePacker):
         return trips
 
     def from_stop_times(self, fileobj: TextIO, trips: dict[int, gtfs.Trip]):
-        cur_trip: int = 0
-        cur_times: list[StopTime] = []
-        for row, trip_id, orig_trip_id in self.table_reader(fileobj, 'trip_id'):
-            if trip_id != cur_trip:
-                if cur_times:
-                    self.fill_trip(trips[cur_trip], cur_times)
-                cur_trip = trip_id
-                cur_times = []
-            arrival = self.parse_time(row['arrival_time']) or 0
-            arrival = round(arrival / 5)
-            departure = self.parse_time(row['departure_time']) or 0
-            if departure:
-                departure = round(departure / 5)
-            elif arrival:
-                departure = arrival
-            cur_times.append(StopTime(
-                seq_id=int(row['stop_sequence']),
-                arrival=arrival,
-                departure=departure,
-                pickup=self.parse_pickup_dropoff(row.get('continuous_pickup')),
-                dropoff=self.parse_pickup_dropoff(row.get('continuous_drop_off')),
-                approximate=row.get('timepoint') == '0',
-            ))
-        if cur_times:
-            self.fill_trip(trips[cur_trip], cur_times)
+        for rows, trip_id, orig_trip_id in self.sequence_reader(
+                fileobj, 'trip_id', 'stop_sequence', gtfs.B_TRIPS):
+            cur_times: list[StopTime] = []
+            for row in rows:
+                arrival = self.parse_time(row['arrival_time']) or 0
+                arrival = round(arrival / 5)
+                departure = self.parse_time(row['departure_time']) or 0
+                if departure:
+                    departure = round(departure / 5)
+                elif arrival:
+                    departure = arrival
+                cur_times.append(StopTime(
+                    seq_id=int(row['stop_sequence']),
+                    arrival=arrival,
+                    departure=departure,
+                    pickup=self.parse_pickup_dropoff(row.get('continuous_pickup')),
+                    dropoff=self.parse_pickup_dropoff(row.get('continuous_drop_off')),
+                    approximate=row.get('timepoint') == '0',
+                ))
+            self.fill_trip(trips[trip_id], cur_times)
 
     def fill_trip(self, trip: gtfs.Trip, times: list[StopTime]):
         times.sort(key=lambda t: t.seq_id)
