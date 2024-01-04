@@ -306,12 +306,12 @@ def info():
                     'ids': {i: s for s, i in ids.ids.items()},
                 })
         elif part == gtfs.B_AGENCY:
-            for a in feed.agencies.values():
+            for a in feed.agencies:
                 print_agency(a)
         elif part == gtfs.B_CALENDAR:
             print_calendar(feed.calendar)
         elif part == gtfs.B_SHAPES:
-            for s in feed.shapes.values():
+            for s in feed.shapes:
                 print_shape(s)
         elif part == gtfs.B_NETWORKS:
             print(json.dumps(feed.networks, ensure_ascii=False))
@@ -323,13 +323,13 @@ def info():
                 ensure_ascii=False
             ))
         elif part == gtfs.B_STOPS:
-            for s in feed.stops.values():
+            for s in feed.stops:
                 print_stop(s)
         elif part == gtfs.B_ROUTES:
-            for r in feed.routes.values():
+            for r in feed.routes:
                 print_route(r)
         elif part == gtfs.B_TRIPS:
-            for t in feed.trips.values():
+            for t in feed.trips:
                 print_trip(t)
         elif part == gtfs.B_TRANSFERS:
             for t in feed.transfers:

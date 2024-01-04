@@ -2,17 +2,17 @@ import argparse
 from .wrapper import GtfsProto, gtfs, GtfsDelta, FareLinks
 
 
-def delta_agencies(
-        a1: dict[int, gtfs.Agency], a2: dict[int, gtfs.Agency]
-        ) -> dict[int, gtfs.Agency]:
+def delta_agencies(a1: list[gtfs.Agency], a2: list[gtfs.Agency]) -> list[gtfs.Agency]:
+    ad1 = {a.agency_id: a for a in a1}
+    ad2 = {a.agency_id: a for a in a2}
     result: list[gtfs.Agency] = []
-    for k, v in a2.items():
-        if k not in a1:
+    for k, v in ad2.items():
+        if k not in ad1:
             # new agency
             result.append(v)
-        elif v != a1[k]:
+        elif v != ad1[k]:
             # wonder if comparing works
-            old = a1[k]
+            old = ad1[k]
             result.append(gtfs.Agency(
                 agency_id=k,
                 name=None if old.name == v.name else v.name,
@@ -23,7 +23,7 @@ def delta_agencies(
                 fare_url=None if old.fare_url == v.fare_url else v.fare_url,
                 email=None if old.email == v.email else v.email,
             ))
-    return {a.agency_id: a for a in result}
+    return result
 
 
 def delta_calendar(c1: gtfs.Calendar, c2: gtfs.Calendar) -> gtfs.Calendar:
@@ -51,36 +51,36 @@ def delta_calendar(c1: gtfs.Calendar, c2: gtfs.Calendar) -> gtfs.Calendar:
     return c
 
 
-def delta_shapes(
-        s1: dict[int, gtfs.Shape], s2: dict[int, gtfs.Shape]
-        ) -> dict[int, gtfs.Shape]:
+def delta_shapes(s1: list[gtfs.Shape], s2: list[gtfs.Shape]) -> list[gtfs.Shape]:
+    sd1 = {s.shape_id: s for s in s1}
+    sd2 = {s.shape_id: s for s in s2}
     result: list[gtfs.Shape] = []
-    for k in s1:
-        if k not in s2:
+    for k in sd1:
+        if k not in sd2:
             result.append(gtfs.Shape(shape_id=k))
-    for k, v in s2.items():
-        if k not in s1:
+    for k, v in sd2.items():
+        if k not in sd1:
             result.append(v)
         else:
             # compare
-            old = s1[k]
+            old = sd1[k]
             if old.longitudes != v.longitudes or old.latitudes != v.latitudes:
                 result.append(v)
-    return {s.shape_id: s for s in result}
+    return result
 
 
-def delta_stops(
-        s1: dict[int, gtfs.Stop], s2: dict[int, gtfs.Stop]
-        ) -> dict[int, gtfs.Stop]:
+def delta_stops(s1: list[gtfs.Stop], s2: list[gtfs.Stop]) -> list[gtfs.Stop]:
+    sd1 = {s.stop_id: s for s in s1}
+    sd2 = {s.stop_id: s for s in s2}
     result: list[gtfs.Stop] = []
-    for k in s1:
-        if k not in s2:
+    for k in sd1:
+        if k not in sd2:
             result.append(gtfs.Stop(stop_id=k))
-    for k, v in s2.items():
-        if k not in s1:
+    for k, v in sd2.items():
+        if k not in sd1:
             result.append(v)
-        elif s1[k] != v:
-            old = s1[k]
+        elif sd1[k] != v:
+            old = sd1[k]
             result.append(gtfs.Stop(
                 stop_id=k,
                 code='' if old.code == v.code else v.code,
@@ -97,7 +97,7 @@ def delta_stops(
                 external_int_id=0 if old.external_int_id == v.external_int_id
                 else v.external_int_id,
             ))
-    return {s.stop_id: s for s in result}
+    return result
 
 
 def delta_itineraries(
@@ -115,18 +115,18 @@ def delta_itineraries(
     return result
 
 
-def delta_routes(
-        r1: dict[int, gtfs.Route], r2: dict[int, gtfs.Route]
-        ) -> dict[int, gtfs.Route]:
+def delta_routes(r1: list[gtfs.Route], r2: list[gtfs.Route]) -> list[gtfs.Route]:
+    rd1 = {r.route_id: r for r in r1}
+    rd2 = {r.route_id: r for r in r2}
     result: list[gtfs.Route] = []
-    for k in r1:
-        if k not in r2:
+    for k in rd1:
+        if k not in rd2:
             result.append(gtfs.Route(route_id=k))
-    for k, v in r2.items():
-        if k not in r1:
+    for k, v in rd2.items():
+        if k not in rd1:
             result.append(v)
-        elif r1[k] != v:  # TODO: does it register itinerary changes?
-            old = r1[k]
+        elif rd1[k] != v:  # TODO: does it register itinerary changes?
+            old = rd1[k]
 
             # Check if anything besides itineraries has changed.
             ni1 = gtfs.Route()
@@ -156,21 +156,21 @@ def delta_routes(
             r.itineraries.extend(delta_itineraries(old.itineraries, v.itineraries))
             result.append(r)
 
-    return {r.route_id: r for r in result}
+    return result
 
 
-def delta_trips(
-        t1: dict[int, gtfs.Trip], t2: dict[int, gtfs.Trip]
-        ) -> dict[int, gtfs.Trip]:
+def delta_trips(t1: list[gtfs.Trip], t2: list[gtfs.Trip]) -> list[gtfs.Trip]:
+    td1 = {t.trip_id: t for t in t1}
+    td2 = {t.trip_id: t for t in t2}
     result: list[gtfs.Trip] = []
-    for k in t1:
-        if k not in t2:
+    for k in td1:
+        if k not in td2:
             result.append(gtfs.Trip(trip_id=k))
-    for k, v in t2.items():
-        if k not in t1:
+    for k, v in td2.items():
+        if k not in td1:
             result.append(v)
-        elif t1[k] != v:
-            old = t1[k]
+        elif td1[k] != v:
+            old = td1[k]
             arr_dep_changed = old.departures != v.departures or old.arrivals != v.arrivals
             result.append(gtfs.Trip(
                 trip_id=k,
@@ -188,7 +188,7 @@ def delta_trips(
                 end_time=0 if old.end_time == v.end_time else v.end_time,
                 interval=0 if old.interval == v.interval else v.interval,
             ))
-    return {r.trip_id: r for r in result}
+    return result
 
 
 def delta_transfers(t1: list[gtfs.Transfer], t2: list[gtfs.Transfer]) -> list[gtfs.Transfer]:
@@ -227,7 +227,7 @@ def delta_dict_int(d1: dict[int, int], d2: dict[int, int]) -> dict[int, int]:
     return {k: v for k, v in d2.items() if k not in d1 or d1[k] != v}
 
 
-def delta_fare_links(f1: FareLinks, f2: FareLinks) -> gtfs.FareLinksDelta:
+def delta_fare_links(f1: FareLinks, f2: FareLinks) -> FareLinks:
     result = gtfs.FareLinksDelta(
         stop_area_ids=delta_dict_int(f1.stop_areas, f2.stop_areas),
         stop_zone_ids=delta_dict_int(f1.stop_zones, f2.stop_zones),
@@ -269,5 +269,5 @@ def delta():
     delta.transfers = delta_transfers(feed1.transfers, feed2.transfers)
     delta.networks = delta_dict(feed1.networks, feed2.networks)
     delta.areas = delta_dict(feed1.areas, feed2.areas)
-    delta.fare_links_delta = delta_fare_links(feed1.fare_links, feed2.fare_links)
+    delta.fare_links = delta_fare_links(feed1.fare_links, feed2.fare_links)
     delta.write(options.output)

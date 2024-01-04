@@ -62,6 +62,9 @@ def is_gtfs_delta(fileobj: BinaryIO) -> bool:
 
 
 class GtfsProto:
+    SHAPE_SCALE = 100000
+    STOP_SCALE = 100000
+
     def __init__(self, fileobj: BinaryIO | None = None, read_now: bool = False):
         self.header = gtfs.GtfsHeader()
         self.header.compressed = True
@@ -200,17 +203,17 @@ class GtfsProto:
         return data if not compressed else self.blocks.get(block, True)
 
     @cached_property
-    def agencies(self) -> dict[int, gtfs.Agency]:
+    def agencies(self) -> list[gtfs.Agency]:
         data = self._read_block(gtfs.B_AGENCY)
         if not data:
-            return {}
+            return []
         ag = gtfs.Agencies()
         ag.ParseFromString(data)
-        return {a.agency_id: a for a in ag.agencies}
+        return list(ag.agencies)
 
     def store_agencies(self):
         if 'agencies' in self.__dict__:
-            ag = gtfs.Agencies(agencies=self.agencies.values())
+            ag = gtfs.Agencies(agencies=self.agencies)
             self.blocks.add(gtfs.B_AGENCY, ag.SerializeToString())
         elif self._fileobj:
             self._read_block(gtfs.B_AGENCY, True)
@@ -241,33 +244,51 @@ class GtfsProto:
         return (lon, lat)
 
     @cached_property
-    def shapes(self) -> dict[int, gtfs.Shape]:
+    def shapes(self) -> list[gtfs.Shape]:
         data = self._read_block(gtfs.B_SHAPES)
         if not data:
-            return {}
+            return []
         shapes = gtfs.Shapes()
         shapes.ParseFromString(data)
 
         # Decouple shapes.
-        result: dict[int, gtfs.Shape] = {}
+        result: list[gtfs.Shape] = []
         prev_last: tuple[int, int] = (0, 0)
         for s in shapes.shapes:
             if s.longitudes:
                 s.longitudes[0] += prev_last[0]
                 s.latitudes[0] += prev_last[1]
                 prev_last = self.get_shape_last(s)
-            result[s.shape_id] = s
+            result.append(s)
         return result
+
+    def parse_shape(self, shape: gtfs.Shape) -> list[tuple[float, float]]:
+        last_coord = (0, 0)
+        coords: list[tuple[float, float]] = []
+        for i in range(len(shape.longitudes)):
+            c = (shape.longitudes[i] + last_coord[0], shape.latitudes[i] + last_coord[1])
+            coords.append((c[0] / self.SHAPE_SCALE, c[1] / self.SHAPE_SCALE))
+            last_coord = c
+        return coords
+
+    def build_shape(self, shape: gtfs.Shape, coords: list[tuple[float, float]]) -> None:
+        if len(coords) < 2:
+            raise Exception(f'Got {len(coords)} coords for shape {shape.shape_id}')
+        del shape.longitudes[:]
+        del shape.latitudes[:]
+        last_coord = (0, 0)
+        for c in coords:
+            new_coord = (round(c[0] * self.SHAPE_SCALE), round(c[1] * self.SHAPE_SCALE))
+            shape.longitudes.append(new_coord[0] - last_coord[0])
+            shape.latitudes.append(new_coord[1] - last_coord[1])
+            last_coord = new_coord
 
     def store_shapes(self):
         if 'shapes' in self.__dict__:
             # Make the sequence.
             shapes: list[gtfs.Shape] = []
             prev_last: tuple[int, int] = (0, 0)
-            for shape_id in sorted(self.shapes):
-                s = self.shapes[shape_id]
-                if s.shape_id != shape_id:
-                    raise IndexError(f'Shape {s.shape_id} is stored under the key {shape_id}!')
+            for s in sorted(self.shapes, key=lambda k: k.shape_id):
                 if s.longitudes:
                     s.longitudes[0] -= prev_last[0]
                     s.latitudes[0] -= prev_last[1]
@@ -282,22 +303,22 @@ class GtfsProto:
             self._read_block(gtfs.B_SHAPES, True)
 
     @cached_property
-    def stops(self) -> dict[int, gtfs.Stop]:
+    def stops(self) -> list[gtfs.Stop]:
         data = self._read_block(gtfs.B_STOPS)
         if not data:
-            return {}
+            return []
         stops = gtfs.Stops()
         stops.ParseFromString(data)
 
         # Decouple stops.
-        result: dict[int, gtfs.Stop] = {}
+        result: list[gtfs.Stop] = []
         prev_coord: tuple[int, int] = (0, 0)
         for s in stops.stops:
             if s.lon and s.lat:
                 s.lon += prev_coord[0]
                 s.lat += prev_coord[1]
                 prev_coord = (s.lon, s.lat)
-            result[s.stop_id] = s
+            result.append(s)
         return result
 
     def store_stops(self):
@@ -305,10 +326,7 @@ class GtfsProto:
             # Make the sequence.
             stops: list[gtfs.Stop] = []
             prev_coord: tuple[int, int] = (0, 0)
-            for stop_id in sorted(self.stops):
-                s = self.stops[stop_id]
-                if s.stop_id != stop_id:
-                    raise IndexError(f'Stop {s.stop_id} is stored under the key {stop_id}!')
+            for s in sorted(self.stops, key=lambda k: k.stop_id):
                 if s.lon and s.lat:
                     pc = (s.lon, s.lat)
                     s.lon -= prev_coord[0]
@@ -323,33 +341,33 @@ class GtfsProto:
             self._read_block(gtfs.B_STOPS, True)
 
     @cached_property
-    def routes(self) -> dict[int, gtfs.Route]:
+    def routes(self) -> list[gtfs.Route]:
         data = self._read_block(gtfs.B_ROUTES)
         if not data:
-            return {}
+            return []
         routes = gtfs.Routes()
         routes.ParseFromString(data)
-        return {r.route_id: r for r in routes.routes}
+        return list(routes.routes)
 
     def store_routes(self):
         if 'routes' in self.__dict__:
-            r = gtfs.Routes(routes=self.routes.values())
+            r = gtfs.Routes(routes=self.routes)
             self.blocks.add(gtfs.B_ROUTES, r.SerializeToString())
         elif self._fileobj:
             self._read_block(gtfs.B_ROUTES, True)
 
     @cached_property
-    def trips(self) -> dict[int, gtfs.Trip]:
+    def trips(self) -> list[gtfs.Trip]:
         data = self._read_block(gtfs.B_TRIPS)
         if not data:
-            return {}
+            return []
         trips = gtfs.Trips()
         trips.ParseFromString(data)
-        return {t.trip_id: t for t in trips.trips}
+        return list(trips.trips)
 
     def store_trips(self):
         if 'trips' in self.__dict__:
-            t = gtfs.Trips(trips=self.trips.values())
+            t = gtfs.Trips(trips=self.trips)
             self.blocks.add(gtfs.B_TRIPS, t.SerializeToString())
         elif self._fileobj:
             self._read_block(gtfs.B_TRIPS, True)
