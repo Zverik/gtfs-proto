@@ -1,15 +1,24 @@
 from . import gtfs_pb2 as gtfs
+from functools import cached_property
 
 
 class StringCache:
-    def __init__(self, source: list[str] | None = None, delta_skip: int = 0):
-        self.strings: list[str] = [''] if not source else [''] * delta_skip + list(source)
-        self.index: dict[str, int] = {s: i for i, s in enumerate(self.strings) if s}
-        self.delta_skip = delta_skip
+    def __init__(self, source: list[str] | None = None):
+        self.strings: list[str] = ['']
+        self.index: dict[str, int] = {}
+        if source:
+            self.set(source)
 
     def clear(self):
         self.strings = ['']
         self.index = {}
+
+    def set(self, source: list[str]):
+        self.strings = list(source) or ['']
+        self.index = {s: i for i, s in enumerate(self.strings) if s}
+
+    def __getitem__(self, i: int) -> str:
+        return self.strings[i]
 
     def add(self, s: str | None) -> int:
         if not s:
@@ -34,11 +43,7 @@ class StringCache:
         return None
 
     def store(self) -> bytes:
-        st = gtfs.StringTable(
-            strings=self.strings[self.delta_skip:],
-            delta_skip=self.delta_skip,
-        )
-        return st.SerializeToString()
+        return gtfs.StringTable(strings=self.strings).SerializeToString()
 
 
 class IdReference:
@@ -61,6 +66,9 @@ class IdReference:
         if k not in self.ids:
             self.last_id += 1
             self.ids[k] = self.last_id
+            # Remove reversed cache.
+            if 'original' in self.__dict__:
+                delattr(self, 'original')
         return self.ids[k]
 
     def get(self, k: str | None, misses: bool = False) -> int | None:
@@ -76,7 +84,8 @@ class IdReference:
             idstrings[i] = s
         return idstrings[self.delta_skip:]
 
-    def reversed(self) -> dict[int, str]:
+    @cached_property
+    def original(self) -> dict[int, str]:
         return {i: s for s, i in self.ids.items()}
 
 

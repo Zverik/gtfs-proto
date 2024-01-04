@@ -14,13 +14,13 @@ class TransfersPacker(BasePacker):
     def block(self):
         return gtfs.B_TRANSFERS
 
-    def pack(self) -> bytes:
+    def pack(self) -> list[gtfs.Transfer]:
         if self.has_file('transfers'):
             with self.open_table('transfers') as f:
                 return self.prepare(f)
-        return b''
+        return []
 
-    def prepare(self, fileobj: TextIO) -> bytes:
+    def prepare(self, fileobj: TextIO) -> list[gtfs.Transfer]:
         transfers: list[gtfs.Transfer] = []
         id_stops = self.id_store[gtfs.B_STOPS]
         id_routes = self.id_store[gtfs.B_ROUTES]
@@ -57,7 +57,7 @@ class TransfersPacker(BasePacker):
                 t.min_transfer_time = ceil(float(transfer_time.strip()) / 5)
             t.type = self.parse_transfer_type(row['transfer_type'])
             transfers.append(t)
-        return gtfs.Transfers(transfers=transfers).SerializeToString()
+        return transfers
 
     def parse_transfer_type(self, value: str | None) -> int:
         if not value:

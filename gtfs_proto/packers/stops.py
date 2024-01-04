@@ -22,8 +22,8 @@ class StopsPacker(BasePacker):
                 self.read_stop_areas(f)
         return st
 
-    def prepare(self, fileobj: TextIO) -> bytes:
-        stops = gtfs.Stops()
+    def prepare(self, fileobj: TextIO) -> list[gtfs.Stop]:
+        stops: list[gtfs.Stop] = []
         last_lat: float = 0
         last_lon: float = 0
         for row, stop_id, orig_stop_id in self.table_reader(fileobj, 'stop_id'):
@@ -52,9 +52,8 @@ class StopsPacker(BasePacker):
             stop.wheelchair = self.parse_accessibility(row.get('wheelchair_boarding'))
             if row.get('platform_code'):
                 stop.platform_code = row['platform_code']
-            # TODO: make a plugin mechanism for external ids.
-            stops.stops.append(stop)
-        return stops.SerializeToString()
+            stops.append(stop)
+        return stops
 
     def read_stop_areas(self, fileobj: TextIO):
         for row, area_id, _ in self.table_reader(fileobj, 'area_id', gtfs.B_AREAS):

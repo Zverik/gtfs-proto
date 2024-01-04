@@ -125,7 +125,6 @@ message Areas {
 message StringTable {
   // First string is always empty.
   repeated string strings = 1;
-  uint32 delta_skip = 2;
 }
 
 message Stops {
@@ -137,7 +136,7 @@ message Stops {
 message Stop {
   uint32 stop_id = 1; // this one is generated for this feed
   string code = 2;
-  uint32 name = 3; // references string table
+  uint32 name = 3; // strings reference
   string desc = 4;
   sint32 lat = 5; // multiplied by 100000 (1e5), diff from the last
   sint32 lon = 6; // same
@@ -173,7 +172,7 @@ message Route {
   uint32 agency_id = 2;
   string short_name = 3;
   // Long name is assumed to be in format "Stop 1 - Stop 2 - Stop 3".
-  // Each part is referenced from string table.
+  // Each part is a strings reference.
   // If names are not in this format, just putting all long names verbatim there.
   repeated uint32 long_name = 4;
   string desc = 5;
@@ -221,7 +220,7 @@ It takes a list of stops from stop_times.txt, hence there can be multiple.
 Also it doesn't mean one trip, but multiple with the same parameters. */
 message RouteItinerary {
   uint32 itinerary_id = 1; // guaranteed to be unique throughout the entire feed
-  uint32 headsign = 2; // referencing strings
+  uint32 headsign = 2; // strings reference
   bool opposite_direction = 3;
   repeated uint32 stops = 4;
   uint32 shape_id = 5;
@@ -361,14 +360,13 @@ message GtfsDeltaHeader {
 // - Note that if delta_skip is larger than the length of ids for a block,
 //   that means that's the wrong delta file to apply.
 
-// StringTable: same idea with delta_skip.
+// StringTable: all used strings are added to it anew.
 
 // Agencies: zero element for same, non-zero for change or addition.
 
 // Calendar: first, base_date is applied only to new and changed records.
 // CalendarDates: rebuilt from scratch using old dates and new/changed.
-//   Keep indices for changed, allow empty lists.
-// CalendarService: not deleting anything; new and changes specify every field.
+// CalendarService: zero for deleted service; new and changed specify every field.
 
 // Shapes: Shape with just an id to delete, with locations - change or add.
 

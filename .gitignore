@@ -5,3 +5,13 @@ __pycache__/
 *.zip
 *.swp
 *.ids
+stops.txt
+stop_times.txt
+routes.txt
+trips.txt
+agency.txt
+calendar.txt
+calendar_dates.txt
+frequencies.txt
+transfers.txt
+networks.txt

@@ -50,7 +50,7 @@ class RoutesPacker(BasePacker):
     def block(self):
         return gtfs.B_ROUTES
 
-    def pack(self):
+    def pack(self) -> list[gtfs.Route]:
         with self.open_table('stop_times') as f:
             trip_stops = self.read_trip_stops(f)
         with self.open_table('trips') as f:
@@ -63,8 +63,8 @@ class RoutesPacker(BasePacker):
         return r
 
     def prepare(self, fileobj: TextIO,
-                itineraries: dict[str, list[gtfs.RouteItinerary]]) -> bytes:
-        routes = gtfs.Routes()
+                itineraries: dict[str, list[gtfs.RouteItinerary]]) -> list[gtfs.Route]:
+        routes: list[gtfs.Route] = []
         agency_ids = self.id_store[gtfs.B_AGENCY]
         network_ids = self.id_store[gtfs.B_NETWORKS]
         for row, route_id, orig_route_id in self.table_reader(fileobj, 'route_id'):
@@ -95,8 +95,8 @@ class RoutesPacker(BasePacker):
             route.continuous_pickup = self.parse_pickup_dropoff(row.get('continuous_pickup'))
             route.continuous_dropoff = self.parse_pickup_dropoff(row.get('continuous_drop_off'))
 
-            routes.routes.append(route)
-        return routes.SerializeToString()
+            routes.append(route)
+        return routes
 
     def read_route_networks(self, fileobj: TextIO):
         for row, network_id, _ in self.table_reader(fileobj, 'network_id', gtfs.B_NETWORKS):

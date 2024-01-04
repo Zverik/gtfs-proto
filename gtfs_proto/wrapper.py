@@ -3,12 +3,22 @@ import zstandard
 from . import gtfs_pb2 as gtfs
 from .base import StringCache, FareLinks, IdReference
 from typing import BinaryIO
+from collections import Counter
 from collections.abc import Generator
 from functools import cached_property
 
 
 __all__ = ['gtfs', 'GtfsBlocks', 'GtfsProto', 'GtfsDelta',
-           'FareLinks', 'is_gtfs_delta']
+           'FareLinks', 'is_gtfs_delta', 'SHAPE_SCALE', 'STOP_SCALE']
+SHAPE_SCALE = 100000
+STOP_SCALE = 100000
+
+
+def is_gtfs_delta(fileobj: BinaryIO) -> bool:
+    fileobj.seek(0)
+    header_len = struct.unpack('<H', fileobj.read(2))[0]
+    fileobj.seek(0)
+    return header_len & 0x8000 > 0
 
 
 class GtfsBlocks:
@@ -34,6 +44,12 @@ class GtfsBlocks:
             if self.blocks[b]:
                 yield self.blocks[b]
 
+    def __contains__(self, b: gtfs.Block) -> bool:
+        return bool(self.blocks.get(b))
+
+    def __getitem__(self, b: gtfs.Block) -> bytes:
+        return self.blocks[b]
+
     def decompressed(self) -> Generator[bytes, None, None]:
         dearch = zstandard.ZstdDecompressor()
         for b in sorted(self.blocks):
@@ -54,17 +70,7 @@ class GtfsBlocks:
         return dearch.decompress(self.blocks[block])
 
 
-def is_gtfs_delta(fileobj: BinaryIO) -> bool:
-    fileobj.seek(0)
-    header_len = struct.unpack('<H', fileobj.read(2))[0]
-    fileobj.seek(0)
-    return header_len & 0x8000 > 0
-
-
 class GtfsProto:
-    SHAPE_SCALE = 100000
-    STOP_SCALE = 100000
-
     def __init__(self, fileobj: BinaryIO | None = None, read_now: bool = False):
         self.header = gtfs.GtfsHeader()
         self.header.compressed = True
@@ -104,7 +110,7 @@ class GtfsProto:
                     data = arch.decompress(data)
                 s = gtfs.StringTable()
                 s.ParseFromString(data)
-                self.strings = StringCache(s.strings, s.delta_skip)
+                self.strings = StringCache(s.strings)
             elif b + 1 == gtfs.B_IDS:
                 data = fileobj.read(size)
                 if arch:
@@ -233,7 +239,7 @@ class GtfsProto:
         elif self._fileobj:
             self._read_block(gtfs.B_CALENDAR, True)
 
-    def get_shape_last(
+    def _get_shape_last(
             self, shape: gtfs.Shape,
             prev_last: tuple[int, int] = (0, 0)) -> tuple[int, int]:
         lon = shape.longitudes[0] + prev_last[0]
@@ -258,30 +264,9 @@ class GtfsProto:
             if s.longitudes:
                 s.longitudes[0] += prev_last[0]
                 s.latitudes[0] += prev_last[1]
-                prev_last = self.get_shape_last(s)
+                prev_last = self._get_shape_last(s)
             result.append(s)
         return result
-
-    def parse_shape(self, shape: gtfs.Shape) -> list[tuple[float, float]]:
-        last_coord = (0, 0)
-        coords: list[tuple[float, float]] = []
-        for i in range(len(shape.longitudes)):
-            c = (shape.longitudes[i] + last_coord[0], shape.latitudes[i] + last_coord[1])
-            coords.append((c[0] / self.SHAPE_SCALE, c[1] / self.SHAPE_SCALE))
-            last_coord = c
-        return coords
-
-    def build_shape(self, shape: gtfs.Shape, coords: list[tuple[float, float]]) -> None:
-        if len(coords) < 2:
-            raise Exception(f'Got {len(coords)} coords for shape {shape.shape_id}')
-        del shape.longitudes[:]
-        del shape.latitudes[:]
-        last_coord = (0, 0)
-        for c in coords:
-            new_coord = (round(c[0] * self.SHAPE_SCALE), round(c[1] * self.SHAPE_SCALE))
-            shape.longitudes.append(new_coord[0] - last_coord[0])
-            shape.latitudes.append(new_coord[1] - last_coord[1])
-            last_coord = new_coord
 
     def store_shapes(self):
         if 'shapes' in self.__dict__:
@@ -292,7 +277,7 @@ class GtfsProto:
                 if s.longitudes:
                     s.longitudes[0] -= prev_last[0]
                     s.latitudes[0] -= prev_last[1]
-                    prev_last = self.get_shape_last(s, prev_last)
+                    prev_last = self._get_shape_last(s, prev_last)
                 shapes.append(s)
 
             # Compress the data.
@@ -435,6 +420,49 @@ class GtfsProto:
             self.blocks.add(gtfs.B_FARE_LINKS, self.fare_links.store())
         elif self._fileobj:
             self._read_block(gtfs.B_FARE_LINKS)
+
+    def pack_strings(self):
+        """
+        Sorts strings by popularity and deletes unused entries to save a few bytes.
+        Tests have shown that this reduces compressed feed size by 0.3%, while
+        complicating string index management. Hence it's not used.
+        """
+        if len(self.strings.strings) <= 1:
+            return
+
+        # Count occurences.
+        c: Counter[int] = Counter()
+        for a in self.agencies:
+            c[a.timezone] += 1
+        for s in self.stops:
+            c[s.name] += 1
+        for r in self.routes:
+            for n in r.long_name:
+                c[n] += 1
+            for i in r.itineraries:
+                c[i.headsign] += 1
+                for h in i.stop_headsigns:
+                    c[h] += 1
+        del c[0]
+
+        # Build the new strings list.
+        repl: dict[int, int] = {v[0]: i + 1 for i, v in enumerate(c.most_common())}
+        repl[0] = 0
+        strings = [''] + [self.strings.strings[v] for v, _ in c.most_common()]
+        self.strings.set(strings)
+
+        # Replace all the references.
+        for a in self.agencies:
+            a.timezone = repl[a.timezone]
+        for s in self.stops:
+            s.name = repl[s.name]
+        for r in self.routes:
+            for ln in range(len(r.long_name)):
+                r.long_name[ln] = repl[r.long_name[ln]]
+            for i in r.itineraries:
+                i.headsign = repl[i.headsign]
+                for hn in range(len(i.stop_headsigns)):
+                    i.stop_headsigns[hn] = repl[i.stop_headsigns[hn]]
 
 
 class GtfsDelta(GtfsProto):

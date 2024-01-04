@@ -25,7 +25,7 @@ class TripsPacker(BasePacker):
     def block(self):
         return gtfs.B_TRIPS
 
-    def pack(self):
+    def pack(self) -> list[gtfs.Trips]:
         with self.open_table('trips') as f:
             trips = self.read_trips(f)
         if self.has_file('frequencies'):
@@ -33,9 +33,7 @@ class TripsPacker(BasePacker):
                 self.from_frequencies(f, trips)
         with self.open_table('stop_times') as f:
             self.from_stop_times(f, trips)
-
-        gtrips = gtfs.Trips(trips=trips.values())
-        return gtrips.SerializeToString()
+        return list(trips.values())
 
     def read_trips(self, fileobj: TextIO) -> dict[int, gtfs.Trip]:
         trips: dict[int, gtfs.Trip] = {}
@@ -79,7 +77,7 @@ class TripsPacker(BasePacker):
     def fill_trip(self, trip: gtfs.Trip, times: list[StopTime]):
         times.sort(key=lambda t: t.seq_id)
         if trip.arrivals or trip.departures:
-            raise ValueError(f'Trip was already filled: {self.ids.reversed()[trip.trip_id]}')
+            raise ValueError(f'Trip was already filled: {self.ids.original[trip.trip_id]}')
         arrivals: list[int] = []
         for i in range(len(times)):
             a = times[i].arrival

@@ -143,11 +143,9 @@ def print_agency(a: gtfs.Agency):
 
 def print_calendar(c: gtfs.Calendar):
     print(json.dumps({'base_date': c.base_date}))
-    for d in c.dates:
-        print(json.dumps({
-            'days_id': d.days_id,
-            'dates': list(d.dates),
-        }))
+    print(json.dumps({
+        'dates': {i: list(dt.dates) for i, dt in enumerate(c.dates)},
+    }))
     for s in c.services:
         print_skip_empty({
             'service_id': s.service_id,

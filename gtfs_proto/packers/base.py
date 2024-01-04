@@ -5,7 +5,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from csv import DictReader
 from io import TextIOWrapper
-from typing import TextIO
+from typing import TextIO, Any
 from zipfile import ZipFile
 
 
@@ -24,7 +24,7 @@ class BasePacker(ABC):
         return gtfs.B_HEADER
 
     @abstractmethod
-    def pack(self) -> bytes:
+    def pack(self) -> Any:
         return b''
 
     def has_file(self, name_part: str) -> bool:
@@ -60,11 +60,9 @@ class BasePacker(ABC):
         seen_ids: set[int] = set()
         for row, row_id, orig_id in self.table_reader(fileobj, id_column, ids_block):
             # Find the row_id index. From the tail, because latest ids are appended there.
-            idx = -1
-            for i in reversed(range(len(cur_ids))):
-                if cur_ids[i] == row_id:
-                    idx = i
-                    break
+            idx = len(cur_ids) - 1
+            while idx >= 0 and cur_ids[idx] != row_id:
+                idx -= 1
 
             if idx < 0:
                 # Not found: dump the oldest sequence and add the new one.
