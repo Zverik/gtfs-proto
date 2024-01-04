@@ -27,14 +27,13 @@ if __name__ == '__main__':
     if not options.s:
         out.shapes = feed.shapes
 
-    stop_ids = feed.id_store[w.gtfs.B_STOPS].original
     out.stops = [w.gtfs.Stop(
         stop_id=s.stop_id,
         name=s.name,
         lat=s.lat,
         lon=s.lon,
         wheelchair=s.wheelchair,
-        external_int_id=siri_ids.get(stop_ids[s.stop_id], 0),
+        external_int_id=siri_ids.get(s.code, 0),
     ) for s in feed.stops]
 
     out.routes = [w.gtfs.Route(
