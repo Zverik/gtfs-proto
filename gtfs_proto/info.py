@@ -1,8 +1,10 @@
 import argparse
-from .wrapper import GtfsProto, gtfs, GtfsDelta, FareLinks, is_gtfs_delta, GtfsBlocks
 import sys
 import json
 from typing import Any
+from .wrapper import (
+    GtfsProto, gtfs, GtfsDelta, FareLinks, is_gtfs_delta, GtfsBlocks
+)
 
 
 BLOCKS = {
@@ -111,7 +113,7 @@ def print_blocks(blocks: GtfsBlocks, compressed: bool):
     for b in blocks.blocks:
         data = blocks.get(b)
         v = {
-            'block': block_names[b],
+            'block': block_names.get(b, str(b)),
             'size': len(data),
         }
         if compressed:
@@ -128,9 +130,10 @@ def print_id(ids: gtfs.IdReference):
     })
 
 
-def print_agency(a: gtfs.Agency):
+def print_agency(a: gtfs.Agency, oid: str | None):
     print_skip_empty({
         'agency_id': a.agency_id,
+        'original_id': oid,
         'name': a.name,
         'url': a.url,
         'timezone': a.timezone,
@@ -157,19 +160,21 @@ def print_calendar(c: gtfs.Calendar):
         })
 
 
-def print_shape(s: gtfs.Shape):
-    print(json.dumps({
+def print_shape(s: gtfs.Shape, oid: str | None):
+    print_skip_empty({
         'shape_id': s.shape_id,
+        'original_id': oid,
         'longitudes': list(s.longitudes),
         'latitudes': list(s.latitudes),
-    }))
+    })
 
 
-def print_stop(s: gtfs.Stop):
+def print_stop(s: gtfs.Stop, oid: str | None):
     LOC_TYPES = ['stop', 'station', 'exit', 'node', 'boarding']
     ACC_TYPES = ['unknown', 'some', 'no']
     print_skip_empty({
         'stop_id': s.stop_id,
+        'original_id': oid,
         'code': s.code,
         'name': s.name or None,
         'desc': s.desc,
@@ -184,7 +189,7 @@ def print_stop(s: gtfs.Stop):
     })
 
 
-def print_route(r: gtfs.Route):
+def print_route(r: gtfs.Route, oid: str | None):
     def prepare_itinerary(i: gtfs.RouteItinerary) -> dict[str, Any]:
         return {k: v for k, v in {
             'itinerary_id': i.itinerary_id,
@@ -216,6 +221,7 @@ def print_route(r: gtfs.Route):
     PD_TYPES = ['no', 'yes', 'phone_agency', 'tell_driver']
     print_skip_empty({
         'route_id': r.route_id,
+        'original_id': oid,
         'agency_id': r.agency_id or None,
         'short_name': r.short_name,
         'long_name': list(r.long_name) or None,
@@ -229,11 +235,12 @@ def print_route(r: gtfs.Route):
     })
 
 
-def print_trip(t: gtfs.Trip):
+def print_trip(t: gtfs.Trip, oid: str | None):
     ACC_TYPES = ['unknown', 'some', 'no']
     PD_TYPES = ['no', 'yes', 'phone_agency', 'tell_driver']
     print_skip_empty({
         'trip_id': t.trip_id,
+        'original_id': oid,
         'service_id': t.service_id or None,
         'itinerary_id': t.itinerary_id or None,
         'short_name': t.short_name,
@@ -277,6 +284,7 @@ def info():
     parser.add_argument('input', type=argparse.FileType('rb'), help='Source file')
     parser.add_argument('-p', '--part', choices=BLOCKS.keys(),
                         help='Part to dump, header by default')
+    parser.add_argument('-i', '--id', help='Just one specific id')
     options = parser.parse_args()
 
     if is_gtfs_delta(options.input):
@@ -295,6 +303,12 @@ def info():
         print_blocks(feed.blocks, feed.header.compressed)
 
     else:
+        for_id = options.id
+        try:
+            int_id = int(options.id or 'none')
+        except ValueError:
+            int_id = -1
+
         part = BLOCKS[options.part]
         if part == gtfs.B_IDS:
             block_names = {v: s for s, v in BLOCKS.items()}
@@ -305,12 +319,16 @@ def info():
                 })
         elif part == gtfs.B_AGENCY:
             for a in feed.agencies:
-                print_agency(a)
+                oid = feed.id_store[part].original.get(a.agency_id)
+                if not for_id or a.agency_id == int_id or oid == for_id:
+                    print_agency(a, oid)
         elif part == gtfs.B_CALENDAR:
             print_calendar(feed.calendar)
         elif part == gtfs.B_SHAPES:
             for s in feed.shapes:
-                print_shape(s)
+                oid = feed.id_store[part].original.get(s.shape_id)
+                if not for_id or s.shape_id == int_id or oid == for_id:
+                    print_shape(s, oid)
         elif part == gtfs.B_NETWORKS:
             print(json.dumps(feed.networks, ensure_ascii=False))
         elif part == gtfs.B_AREAS:
@@ -322,13 +340,19 @@ def info():
             ))
         elif part == gtfs.B_STOPS:
             for s in feed.stops:
-                print_stop(s)
+                oid = feed.id_store[part].original.get(s.stop_id)
+                if not for_id or s.stop_id == int_id or oid == for_id:
+                    print_stop(s, oid)
         elif part == gtfs.B_ROUTES:
             for r in feed.routes:
-                print_route(r)
+                oid = feed.id_store[part].original.get(r.route_id)
+                if not for_id or r.route_id == int_id or oid == for_id:
+                    print_route(r, oid)
         elif part == gtfs.B_TRIPS:
             for t in feed.trips:
-                print_trip(t)
+                oid = feed.id_store[part].original.get(t.trip_id)
+                if not for_id or t.trip_id == int_id or oid == for_id:
+                    print_trip(t, oid)
         elif part == gtfs.B_TRANSFERS:
             for t in feed.transfers:
                 print_transfer(t)

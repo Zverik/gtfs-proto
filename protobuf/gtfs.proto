@@ -69,9 +69,6 @@ message Agency {
   string email = 8;
 }
 
-/* Note: dates are compared on assumption there are 31 days
-in each month. This allows building days without calendar knowledge. */
-
 message Calendar {
   // A number just like in GTFS: e.g. 20240821.
   // All service dates use offsets in days from it.

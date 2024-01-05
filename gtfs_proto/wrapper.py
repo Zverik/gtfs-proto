@@ -421,11 +421,14 @@ class GtfsProto:
         elif self._fileobj:
             self._read_block(gtfs.B_FARE_LINKS)
 
-    def pack_strings(self):
+    def pack_strings(self, sort=False):
         """
         Sorts strings by popularity and deletes unused entries to save a few bytes.
         Tests have shown that this reduces compressed feed size by 0.3%, while
         complicating string index management. Hence it's not used.
+
+        Also, sorting somehow increases compressed size of blocks, while reducing
+        the raw size.
         """
         if len(self.strings.strings) <= 1:
             return
@@ -446,9 +449,17 @@ class GtfsProto:
         del c[0]
 
         # Build the new strings list.
-        repl: dict[int, int] = {v[0]: i + 1 for i, v in enumerate(c.most_common())}
-        repl[0] = 0
-        strings = [''] + [self.strings.strings[v] for v, _ in c.most_common()]
+        if sort:
+            repl = {v[0]: i + 1 for i, v in enumerate(c.most_common())}
+            repl[0] = 0
+            strings = [''] + [self.strings.strings[v] for v, _ in c.most_common()]
+        else:
+            repl = {}
+            strings = []
+            for i, v in enumerate(self.strings.strings):
+                if not i or i in c:
+                    repl[i] = len(strings)
+                    strings.append(v)
         self.strings.set(strings)
 
         # Replace all the references.
