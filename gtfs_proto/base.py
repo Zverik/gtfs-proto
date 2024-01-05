@@ -106,9 +106,9 @@ class FareLinks:
         self.route_networks = {i: v for i, v in enumerate(fl.route_network_ids) if v}
 
     def load_delta(self, fl: gtfs.FareLinksDelta):
-        self.stop_zones = {i: v for i, v in fl.stop_zone_ids}
-        self.stop_areas = {i: v for i, v in fl.stop_area_ids}
-        self.route_networks = {i: v for i, v in fl.route_network_ids}
+        self.stop_zones = {i: v for i, v in fl.stop_zone_ids.items()}
+        self.stop_areas = {i: v for i, v in fl.stop_area_ids.items()}
+        self.route_networks = {i: v for i, v in fl.route_network_ids.items()}
 
     def to_list(self, d: dict[int, int]) -> list[int]:
         if not d:

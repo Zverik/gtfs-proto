@@ -66,24 +66,10 @@ class DeltaMaker:
                 result.append(CalendarService(service_id=k))
         for k, v in cd2.items():
             if k not in cd1:
-                changed = True
+                result.append(v)
             else:
-                old = cd1[k]
-                changed = False
-                # Compare fields.
-                if old.start_date != v.start_date:
-                    changed = True
-                if old.end_date != v.end_date:
-                    changed = True
-                if old.weekdays != v.weekdays:
-                    changed = True
-                if not changed:
-                    bd = dt.date.today() - dt.timedelta(days=1)
-                    if cut(old.added_days, bd) != cut(v.added_days, bd):
-                        changed = True
-                    if cut(old.removed_days, bd) != cut(v.removed_days, bd):
-                        changed = True
-                if changed:
+                bd = dt.date.today() - dt.timedelta(days=1)
+                if not cd1[k].equals(v, bd):
                     result.append(v)
 
         return build_calendar(result, int_to_date(c2.base_date))
@@ -237,7 +223,7 @@ class DeltaMaker:
                     short_name='' if old.short_name == v.short_name else v.short_name,
                     wheelchair=v.wheelchair,
                     bikes=v.bikes,
-                    approximate=0 if old.approximate == v.approximate else v.approximate,
+                    approximate=v.approximate,
                     departures=[] if not arr_dep_changed else v.departures,
                     arrivals=[] if not arr_dep_changed else v.arrivals,
                     pickup_types=[] if old.pickup_types == v.pickup_types else v.pickup_types,

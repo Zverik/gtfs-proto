@@ -30,6 +30,34 @@ class CalendarService:
             return True
         return self.weekdays[on.weekday()]
 
+    def equals(self, other, base_date: date | None = None) -> bool:
+        def cut(dates: list[date], base_date: date | None) -> list[date]:
+            if not base_date:
+                return dates
+            return [d for d in dates if d > base_date]
+
+        def cap(d: date | None, base_date: date | None) -> date | None:
+            if not d or not base_date or d > base_date:
+                return d
+            return base_date
+
+        if self.service_id != other.service_id:
+            return False
+        if cap(self.start_date, base_date) != cap(other.start_date, base_date):
+            return False
+        if cap(self.end_date, base_date) != cap(other.end_date, base_date):
+            return False
+        if self.weekdays != other.weekdays:
+            return False
+        if cut(other.added_days, base_date) != cut(self.added_days, base_date):
+            return False
+        if cut(other.removed_days, base_date) != cut(self.removed_days, base_date):
+            return False
+        return True
+
+    def __eq__(self, other) -> bool:
+        return self.equals(other)
+
 
 def int_to_date(d: int) -> date:
     return date(d // 10000, (d % 10000) // 100, d % 100)

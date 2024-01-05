@@ -2,6 +2,7 @@ import sys
 from .pack import pack
 from .info import info
 from .delta import delta
+from .dmerge import delta_merge
 
 
 def print_help():
@@ -13,6 +14,7 @@ def print_help():
     print('    pack\tPackage GTFS zip into a protobuf file')
     print('    info\tPrint information for a protobuf-packed GTFS')
     print('    delta\tGenerate a delta file for two packed GTFS feeds')
+    print('    dmerge\nMerge two sequential delta files')
     print()
     print('Run {} <command> --help to see a command help.'.format(sys.argv[0]))
 
@@ -30,6 +32,8 @@ elif op == 'info':
     info()
 elif op == 'delta':
     delta()
+elif op == 'dmerge':
+    delta_merge()
 else:
     print_help()
     sys.exit(1)
