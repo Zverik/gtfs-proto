@@ -111,7 +111,7 @@ class DeltaMaker:
         result: list[gtfs.Stop] = []
         for k in sd1:
             if k not in sd2:
-                result.append(gtfs.Stop(stop_id=k))
+                result.append(gtfs.Stop(stop_id=k, delete=True))
         for k, v in sd2.items():
             if k not in sd1:
                 v.name = self.add_string(v.name)
@@ -167,7 +167,7 @@ class DeltaMaker:
         result: list[gtfs.Route] = []
         for k in rd1:
             if k not in rd2:
-                result.append(gtfs.Route(route_id=k))
+                result.append(gtfs.Route(route_id=k, delete=True))
         for k, v in rd2.items():
             if k not in rd1:
                 for i in range(len(v.long_name)):
@@ -179,6 +179,8 @@ class DeltaMaker:
                 old = rd1[k]
                 for i in range(len(old.long_name)):
                     old.long_name[i] = self.from_old(old.long_name[i])
+                i1 = list(sorted(old.itineraries, key=lambda it: it.itinerary_id))
+                i2 = list(sorted(v.itineraries, key=lambda it: it.itinerary_id))
 
                 if old != v:
                     # Check if anything besides itineraries has changed.
@@ -190,6 +192,9 @@ class DeltaMaker:
                     del ni2.itineraries[:]
 
                     if ni1 == ni2:
+                        if i1 == i2:
+                            # Just unsorted itineraries.
+                            continue
                         r = gtfs.Route(route_id=k)
                     else:
                         r = gtfs.Route(

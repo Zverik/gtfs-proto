@@ -186,6 +186,7 @@ def print_stop(s: gtfs.Stop, oid: str | None):
         'platform_code': s.platform_code,
         'external_str_id': s.external_str_id,
         'external_int_id': s.external_int_id or None,
+        'delete': s.delete,
     })
 
 
@@ -232,6 +233,7 @@ def print_route(r: gtfs.Route, oid: str | None):
         'continuous_pickup': None if not r.continuous_pickup else PD_TYPES[r.continuous_pickup],
         'continuous_dropoff': None if not r.continuous_dropoff else PD_TYPES[r.continuous_dropoff],
         'itineraries': [prepare_itinerary(i) for i in r.itineraries] or None,
+        'delete': r.delete,
     })
 
 

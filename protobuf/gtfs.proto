@@ -143,6 +143,7 @@ message Stop {
   string platform_code = 10;
   string external_str_id = 11; // external id for linking, as string
   uint32 external_int_id = 12; // external id for linking, as number
+  bool delete = 13;
 }
 
 enum LocationType {
@@ -180,6 +181,7 @@ message Route {
   PickupDropoff continuous_dropoff = 10;
 
   repeated RouteItinerary itineraries = 11; // to skip route_id there.
+  bool delete = 12;
 }
 
 // See also https://developers.google.com/transit/gtfs/reference/extended-route-types
@@ -367,7 +369,7 @@ message GtfsDeltaHeader {
 
 // Shapes: Shape with just an id to delete, with locations - change or add.
 
-// Stops: Stop with just an id to delete, with a new id to add, with existing -
+// Stops: Stop with delete=True to delete, with a new id to add, with existing -
 // empty fields stay the same. Fields "wheelchair" and "type" are always set for changed.
 // New ids should continue the sequence.
 
