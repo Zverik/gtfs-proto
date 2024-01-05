@@ -296,6 +296,7 @@ def delta():
     delta = GtfsDelta()
     delta.header.old_version = feed1.header.version
     delta.header.version = feed2.header.version
+    delta.header.date = feed2.header.date
     delta.header.compressed = feed2.header.compressed
 
     delta.id_store = feed2.id_store

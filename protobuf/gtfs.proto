@@ -36,17 +36,20 @@ message GtfsHeader {
   // we're using the previous one for reference, and incrementing the version.
   uint32 version = 1;
 
-  // In case of errors, this would be the reference feed.
-  // Please link to static files, e.g. "240319", not "latest".
-  string original_url = 2;
+  // Date when the original GTFS feed was built, in YYYYMMDD format (20240319).
+  uint32 date = 2;
+
+  // In case of errors, this would be the reference GTFS feed, zip file itself.
+  // Please link to specific builds if possible, e.g. "20240319", not "latest".
+  string original_url = 3;
 
   // If true, all blocks are compressed with Zstandard.
   // https://facebook.github.io/zstd/
   // TODO: maybe leave the compression to external tools, on a file level?
-  bool compressed = 3;
+  bool compressed = 4;
 
   // Array in order and matching the Blocks enum.
-  repeated uint32 blocks = 4;
+  repeated uint32 blocks = 5;
 }
 
 /* All identifiers are renumbered, starting from 1.
@@ -351,8 +354,9 @@ The header length is added to 0x8000. */
 message GtfsDeltaHeader {
   uint32 old_version = 1;
   uint32 version = 2;
-  bool compressed = 3;
-  repeated uint32 blocks = 4;
+  uint32 date = 3;
+  bool compressed = 4;
+  repeated uint32 blocks = 5;
 }
 
 // IdStore: same structure, only adding ids, using delta_skip to skip old ids.

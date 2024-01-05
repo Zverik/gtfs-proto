@@ -95,9 +95,11 @@ def build_calendar(services: list[CalendarService],
 
     def pack_dates(dates: list[date], base_date: date) -> list[int]:
         result: list[int] = []
-        for i, d in enumerate(sorted(dates)):
+        prev = base_date
+        for d in sorted(dates):
             if d > base_date:
-                result.append((dates[i] - (base_date if i == 0 else dates[i - 1])).days)
+                result.append((d - prev).days)
+                prev = d
         return result
 
     def find_or_add(dates: list[int], data: list[list[int]]) -> int:

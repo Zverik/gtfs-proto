@@ -95,6 +95,7 @@ def print_skip_empty(d: dict[str, Any]):
 def print_header(header: gtfs.GtfsHeader):
     print_skip_empty({
         'version': header.version,
+        'date': header.date,
         'original_url': header.original_url,
         'compressed': header.compressed,
     })
@@ -104,6 +105,7 @@ def print_delta_header(header: gtfs.GtfsDeltaHeader):
     print_skip_empty({
         'old_version': header.old_version,
         'version': header.version,
+        'date': header.date,
         'compressed': header.compressed,
     })
 

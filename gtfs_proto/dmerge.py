@@ -180,6 +180,7 @@ def delta_merge():
         sys.exit(1)
 
     delta.header.version = second.header.version
+    delta.header.date = second.header.date
     delta.header.compressed = second.header.compressed
 
     for k, v in delta.id_store.items():

@@ -1,5 +1,6 @@
 import argparse
 from zipfile import ZipFile
+from datetime import date
 from .wrapper import GtfsProto
 from .packers import (
     BasePacker, AgencyPacker, NetworksPacker, AreasPacker,
@@ -17,6 +18,7 @@ def pack():
         description='Converts GTFS feed into a protobuf-compressed version')
     parser.add_argument('input', help='Input zipped gtfs file')
     parser.add_argument('-u', '--url', help='URL to the original feed')
+    parser.add_argument('-d', '--date', help='Date for the original feed')
     parser.add_argument('-p', '--prev', type=argparse.FileType('rb'),
                         help='Last build for keeping ids consistent')
     parser.add_argument('-o', '--output', required=True,
@@ -34,6 +36,16 @@ def pack():
         feed.header.original_url = prev.header.original_url
     else:
         feed.header.version = 1
+
+    if options.date:
+        d = ''.join(c for c in options.date if c.isdecimal())
+        if len(d) == 6:
+            d = '20' + d
+        if len(d) != 8:
+            raise ValueError('Expecting date in format YYYYMMDD')
+        feed.header.date = int(d)
+    else:
+        feed.header.date = int(date.today().strftime('%Y%m%d'))
 
     feed.header.compressed = not options.raw
     if options.url:
