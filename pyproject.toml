@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gtfs-proto"
+version = "0.1.0"
+authors = [
+  { name="Ilya Zverev", email="ilya@zverev.info" },
+]
+description = "Library to package and process GTFS feeds in a protobuf format"
+keywords = ["gtfs", "transit", "feed", "gtp", "command line"]
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.9"
+dependencies = [
+    "zstandard",
+    "protobuf",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: ISC License (ISCL)",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: File Formats",
+    "Topic :: Utilities",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/Zverik/gtfs_proto"
+"Bug Tracker" = "https://github.com/Zverik/gtfs_proto/issues"
+
+[project.scripts]
+gtfs_proto = "gtfs_proto"

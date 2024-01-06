@@ -178,6 +178,10 @@ def delta_merge():
             f'Cannot fill the gap between versions {delta.header.version} '
             'and {second.header.old_version}.', file=sys.stderr)
         sys.exit(1)
+    if delta.header.old_version >= second.header.old_version:
+        print('The new delta already covers the scope of the old one.',
+              file=sys.stderr)
+        sys.exit(1)
 
     delta.header.version = second.header.version
     delta.header.date = second.header.date
