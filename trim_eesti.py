@@ -1,7 +1,7 @@
 #!.venv/bin/python
 import argparse
 import csv
-from gtfs_proto import wrapper as w
+from gtfs_proto import GtfsProto, gtfs
 
 
 if __name__ == '__main__':
@@ -17,8 +17,8 @@ if __name__ == '__main__':
         if row[1] and row[1] != 'SiriID':
             siri_ids[row[0]] = int(row[1])
 
-    feed = w.GtfsProto(options.input)
-    out = w.GtfsProto()
+    feed = GtfsProto(options.input)
+    out = GtfsProto()
     out.header.version = feed.header.version
     out.strings = feed.strings
     out.calendar = feed.calendar
@@ -27,7 +27,7 @@ if __name__ == '__main__':
     if not options.s:
         out.shapes = feed.shapes
 
-    out.stops = [w.gtfs.Stop(
+    out.stops = [gtfs.Stop(
         stop_id=s.stop_id,
         name=s.name,
         lat=s.lat,
@@ -36,11 +36,11 @@ if __name__ == '__main__':
         external_int_id=siri_ids.get(s.code, 0),
     ) for s in feed.stops]
 
-    out.routes = [w.gtfs.Route(
+    out.routes = [gtfs.Route(
         route_id=r.route_id,
         short_name=r.short_name,
         type=r.type,
-        itineraries=[w.gtfs.RouteItinerary(
+        itineraries=[gtfs.RouteItinerary(
             itinerary_id=i.itinerary_id,
             headsign=i.headsign,
             stops=i.stops,

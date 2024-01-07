@@ -167,7 +167,7 @@ Of course you can view contents of a delta file the same way.
 Reading GTFS protobuf files is pretty straightforward:
 
 ```python
-import gtfs_proto as gtp
+from gtfs_proto import GtfsProto
 
 feed = GtfsProto(open('city.gtp', 'rb'))
 print(f'Feed built on {feed.header.date}')
