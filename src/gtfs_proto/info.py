@@ -25,6 +25,10 @@ BLOCKS = {
     'areas': gtfs.B_AREAS,
     'fare_links': gtfs.B_FARE_LINKS,
     'fares': gtfs.B_FARES,
+
+    # Not actual blocks.
+    'version': -1,
+    'date': -2,
 }
 
 
@@ -286,8 +290,8 @@ def info():
     parser = argparse.ArgumentParser(
         description='Print information and contents of a protobuf-compressed GTFS')
     parser.add_argument('input', type=argparse.FileType('rb'), help='Source file')
-    parser.add_argument('-p', '--part', choices=BLOCKS.keys(),
-                        help='Part to dump, header by default')
+    parser.add_argument('-b', '--block', choices=BLOCKS.keys(),
+                        help='Block to dump, header by default')
     parser.add_argument('-i', '--id', help='Just one specific id')
     options = parser.parse_args()
 
@@ -296,7 +300,7 @@ def info():
     else:
         feed = GtfsProto(options.input)
 
-    if not options.part:
+    if not options.block:
         feed.read_all()
         if isinstance(feed, GtfsDelta):
             print_delta_header(feed.header)
@@ -313,54 +317,59 @@ def info():
         except ValueError:
             int_id = -1
 
-        part = BLOCKS[options.part]
-        if part == gtfs.B_IDS:
+        block = BLOCKS[options.part]
+
+        if options.block == 'version':
+            print(feed.header.version)
+        elif options.block == 'date':
+            print(feed.header.date)
+        elif block == gtfs.B_IDS:
             block_names = {v: s for s, v in BLOCKS.items()}
             for b, ids in feed.id_store.items():
                 print_skip_empty({
                     'block': block_names.get(b, str(b)),
                     'ids': {i: s for s, i in ids.ids.items()},
                 })
-        elif part == gtfs.B_AGENCY:
+        elif block == gtfs.B_AGENCY:
             for a in feed.agencies:
-                oid = feed.id_store[part].original.get(a.agency_id)
+                oid = feed.id_store[block].original.get(a.agency_id)
                 if not for_id or a.agency_id == int_id or oid == for_id:
                     print_agency(a, oid)
-        elif part == gtfs.B_CALENDAR:
+        elif block == gtfs.B_CALENDAR:
             print_calendar(feed.calendar)
-        elif part == gtfs.B_SHAPES:
+        elif block == gtfs.B_SHAPES:
             for s in feed.shapes:
-                oid = feed.id_store[part].original.get(s.shape_id)
+                oid = feed.id_store[block].original.get(s.shape_id)
                 if not for_id or s.shape_id == int_id or oid == for_id:
                     print_shape(s, oid)
-        elif part == gtfs.B_NETWORKS:
+        elif block == gtfs.B_NETWORKS:
             print(json.dumps(feed.networks, ensure_ascii=False))
-        elif part == gtfs.B_AREAS:
+        elif block == gtfs.B_AREAS:
             print(json.dumps(feed.areas, ensure_ascii=False))
-        elif part == gtfs.B_STRINGS:
+        elif block == gtfs.B_STRINGS:
             print(json.dumps(
                 {i: s for i, s in enumerate(feed.strings.strings)},
                 ensure_ascii=False
             ))
-        elif part == gtfs.B_STOPS:
+        elif block == gtfs.B_STOPS:
             for s in feed.stops:
-                oid = feed.id_store[part].original.get(s.stop_id)
+                oid = feed.id_store[block].original.get(s.stop_id)
                 if not for_id or s.stop_id == int_id or oid == for_id:
                     print_stop(s, oid)
-        elif part == gtfs.B_ROUTES:
+        elif block == gtfs.B_ROUTES:
             for r in feed.routes:
-                oid = feed.id_store[part].original.get(r.route_id)
+                oid = feed.id_store[block].original.get(r.route_id)
                 if not for_id or r.route_id == int_id or oid == for_id:
                     print_route(r, oid)
-        elif part == gtfs.B_TRIPS:
+        elif block == gtfs.B_TRIPS:
             for t in feed.trips:
-                oid = feed.id_store[part].original.get(t.trip_id)
+                oid = feed.id_store[block].original.get(t.trip_id)
                 if not for_id or t.trip_id == int_id or oid == for_id:
                     print_trip(t, oid)
-        elif part == gtfs.B_TRANSFERS:
+        elif block == gtfs.B_TRANSFERS:
             for t in feed.transfers:
                 print_transfer(t)
-        elif part == gtfs.B_FARE_LINKS:
+        elif block == gtfs.B_FARE_LINKS:
             print_fare_links(feed.fare_links)
         else:
             print(
