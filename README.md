@@ -151,12 +151,14 @@ There are two additional "blocks" that print numbers from the header:
 `version` and `date`. Use these to simplify automation. For example, this is
 how you make a version-named copy of the lastest feed:
 
-    cp city-latest.gtp city-$(gtfs_proto info -b version).gtp
+```sh
+cp city-latest.gtp city-$(gtfs_proto info -b version).gtp
+```
 
 When applicable, you can print just the line for a given identifier,
 both for the one from the original GTFS feed, and for a numeric generated one:
 
-   gtfs_proto info city.gtp -p stops --id 45
+    gtfs_proto info city.gtp -p stops --id 45
 
 Of course you can view contents of a delta file the same way.
 
