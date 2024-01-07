@@ -114,7 +114,7 @@ file to keep identifiers from altering, and to keep delta file sizes to a minimu
 
 ### Deltas
 
-Delta, a list differences between two feeds, is made with this obvious command:
+Delta, a list of differences between two feeds, is made with this obvious command:
 
     gtfs_proto delta city_last.gtp city.gtp -o city_delta.gtp
 
@@ -126,7 +126,7 @@ old feeds, you can merge deltas:
 
     gtfs_proto dmerge city_delta_1-2.gtp city_delta_2-3.gtp -o city_delta_1-3.gtp
 
-It's recommended to avoid merging deltas and store old feeds instead to produce
+It is recommended to avoid merging deltas and store old feeds instead to produce
 delta files with the `delta` command.
 
 There is no command for applying deltas: it's on end users to read the file and
@@ -152,7 +152,7 @@ There are two additional "blocks" that print numbers from the header:
 how you make a version-named copy of the lastest feed:
 
 ```sh
-cp city-latest.gtp city-$(gtfs_proto info -b version).gtp
+cp city-latest.gtp city-$(gtfs_proto info city-latest.gtp -b version).gtp
 ```
 
 When applicable, you can print just the line for a given identifier,

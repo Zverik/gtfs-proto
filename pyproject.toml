@@ -33,4 +33,4 @@ classifiers = [
 "Bug Tracker" = "https://github.com/Zverik/gtfs_proto/issues"
 
 [project.scripts]
-gtfs_proto = "gtfs_proto"
+gtfs_proto = "gtfs_proto.__main__:main"

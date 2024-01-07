@@ -19,21 +19,26 @@ def print_help():
     print('Run {} <command> --help to see a command help.'.format(sys.argv[0]))
 
 
-if len(sys.argv) <= 1:
-    print_help()
-    sys.exit(1)
+def main():
+    if len(sys.argv) <= 1:
+        print_help()
+        sys.exit(1)
 
-op = sys.argv[1].strip().lower()
-sys.argv.pop(1)
+    op = sys.argv[1].strip().lower()
+    sys.argv.pop(1)
 
-if op == 'pack':
-    pack()
-elif op == 'info':
-    info()
-elif op == 'delta':
-    delta()
-elif op == 'dmerge':
-    delta_merge()
-else:
-    print_help()
-    sys.exit(1)
+    if op == 'pack':
+        pack()
+    elif op == 'info':
+        info()
+    elif op == 'delta':
+        delta()
+    elif op == 'dmerge':
+        delta_merge()
+    else:
+        print_help()
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()
