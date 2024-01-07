@@ -31,6 +31,9 @@ to use the original feed.
 
 ### Binary Format
 
+**Note that the format is to have significant changes, including renumbering
+of fields, until version 1.0 is published.**
+
 Inside the file, first thing is a little-endian two-byte size for the header
 block. Then the header serialized message follows.
 
@@ -167,7 +170,7 @@ import gtfs_proto as gtp
 feed = GtfsProto(open('city.gtp', 'rb'))
 print(f'Feed built on {feed.header.date}')
 for stop in feed.stops:
-    print(f'Stop {stop.stop_id'} named "{feed.strings[stop.name]}".')
+    print(f'Stop {stop.stop_id} named "{feed.strings[stop.name]}".')
 ```
 
 The `GtfsProto` (and `GtfsDelta`) object reads the file header and lazily provides
