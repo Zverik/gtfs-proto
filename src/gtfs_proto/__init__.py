@@ -3,7 +3,7 @@ from .util import (
     CalendarService, parse_calendar, build_calendar, int_to_date,
     parse_shape, build_shape,
 )
-from .base import StringCache, FareLinks, IdReference
+from .base import StringCache, IdReference
 from . import gtfs_pb2 as gtfs
 
 

@@ -1,28 +1,28 @@
-from .base import BasePacker, StringCache, IdReference, FareLinks
+from .base import BasePacker, StringCache, IdReference
 from typing import TextIO
 from zipfile import ZipFile
+from collections import defaultdict
 from .. import gtfs_pb2 as gtfs
 
 
 class StopsPacker(BasePacker):
-    def __init__(self, z: ZipFile, strings: StringCache, id_store: dict[int, IdReference],
-                 fl: FareLinks):
+    def __init__(self, z: ZipFile, strings: StringCache, id_store: dict[int, IdReference]):
         super().__init__(z, strings, id_store)
-        self.fl = fl
 
     @property
     def block(self):
         return gtfs.B_STOPS
 
     def pack(self):
-        with self.open_table('stops') as f:
-            st = self.prepare(f)
+        areas = {}
         if self.has_file('stop_areas'):
             with self.open_table('stop_areas') as f:
-                self.read_stop_areas(f)
+                areas = self.read_stop_areas(f)
+        with self.open_table('stops') as f:
+            st = self.prepare(f, areas)
         return st
 
-    def prepare(self, fileobj: TextIO) -> list[gtfs.Stop]:
+    def prepare(self, fileobj: TextIO, areas: dict[str, list[int]]) -> list[gtfs.Stop]:
         stops: list[gtfs.Stop] = []
         last_lat: float = 0
         last_lon: float = 0
@@ -42,22 +42,27 @@ class StopsPacker(BasePacker):
                 stop.lon = new_lon - last_lon
                 last_lat, last_lon = new_lat, new_lon
             if row.get('zone_id'):
-                self.fl.stop_zones[stop_id] = self.id_store[gtfs.B_ZONES].add(row['zone_id'])
+                stop.zone = self.id_store[gtfs.B_ZONES].add(row['zone_id'])
+            if orig_stop_id in areas:
+                stop.areas = areas[orig_stop_id]
             stop.type = self.parse_location_type(row.get('location_type'))
             pstid = row.get('parent_station')
             if pstid:
                 stop.parent_id = self.ids.add(pstid)
             if row.get('stop_timezone'):
-                raise Exception(f'Time to implement time zones! {row["stop_timezone"]}')
+                # We don't implement time zones because they are not used.
+                pass
             stop.wheelchair = self.parse_accessibility(row.get('wheelchair_boarding'))
             if row.get('platform_code'):
                 stop.platform_code = row['platform_code']
             stops.append(stop)
         return stops
 
-    def read_stop_areas(self, fileobj: TextIO):
+    def read_stop_areas(self, fileobj: TextIO) -> dict[str, list[int]]:
+        areas = defaultdict(list)
         for row, area_id, _ in self.table_reader(fileobj, 'area_id', gtfs.B_AREAS):
-            self.fl.stop_areas[self.ids.add(row['stop_id'])] = area_id
+            areas[row['stop_id']].append(area_id)
+        return areas
 
     def parse_location_type(self, value: str | None) -> int:
         if not value:

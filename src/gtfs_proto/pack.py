@@ -4,7 +4,7 @@ from datetime import date
 from .wrapper import GtfsProto
 from .packers import (
     BasePacker, AgencyPacker, NetworksPacker, AreasPacker,
-    CalendarPacker, ShapesPacker, StopsPacker,
+    CalendarPacker, ShapesPacker, StopsPacker, ItineraryPacker,
     RoutesPacker, TripsPacker, TransfersPacker,
 )
 
@@ -53,14 +53,15 @@ def pack():
 
     with ZipFile(options.input, 'r') as z:
         feed.agencies = AgencyPacker(z, feed.strings, feed.id_store).pack()
-        feed.calendar = CalendarPacker(z, feed.strings, feed.id_store).pack()
+        feed.services = CalendarPacker(z, feed.strings, feed.id_store).pack()
         feed.shapes = ShapesPacker(z, feed.strings, feed.id_store).pack()
         feed.networks = NetworksPacker(z, feed.strings, feed.id_store).pack()
         feed.areas = AreasPacker(z, feed.strings, feed.id_store).pack()
-        feed.stops = StopsPacker(z, feed.strings, feed.id_store, feed.fare_links).pack()
-        r = RoutesPacker(z, feed.strings, feed.id_store, feed.fare_links)  # reads itineraries
-        feed.routes = r.pack()
-        feed.trips = TripsPacker(z, feed.strings, feed.id_store, r.trip_itineraries).pack()
+        feed.stops = StopsPacker(z, feed.strings, feed.id_store).pack()
+        feed.routes = RoutesPacker(z, feed.strings, feed.id_store).pack()
+        i = ItineraryPacker(z, feed.strings, feed.id_store)
+        feed.itineraries = i.pack()
+        feed.trips = TripsPacker(z, feed.strings, feed.id_store, i.trip_itineraries).pack()
         feed.transfers = TransfersPacker(z, feed.strings, feed.id_store).pack()
 
     fn = options.output.replace('%', str(feed.header.version))

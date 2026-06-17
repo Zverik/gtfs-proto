@@ -63,7 +63,7 @@ def int_to_date(d: int) -> date:
     return date(d // 10000, (d % 10000) // 100, d % 100)
 
 
-def parse_calendar(c: gtfs.Calendar) -> list[CalendarService]:
+def parse_calendar(c: gtfs.Services) -> list[CalendarService]:
     def add_base_date(d: list[int], base_date: date) -> list[date]:
         result: list[date] = []
         for i, dint in enumerate(d):
@@ -74,7 +74,6 @@ def parse_calendar(c: gtfs.Calendar) -> list[CalendarService]:
         return result
 
     base_date = int_to_date(c.base_date)
-    dates = {i: add_base_date(d.dates, base_date) for i, d in enumerate(c.dates)}
     result = []
     for s in c.services:
         result.append(CalendarService(
@@ -82,14 +81,14 @@ def parse_calendar(c: gtfs.Calendar) -> list[CalendarService]:
             start_date=None if not s.start_date else base_date + timedelta(days=s.start_date),
             end_date=None if not s.end_date else base_date + timedelta(days=s.end_date),
             weekdays=[s.weekdays & (1 << i) > 0 for i in range(7)],
-            added_days=dates[s.added_days],
-            removed_days=dates[s.removed_days],
+            added_days=add_base_date(s.added_days, base_date),
+            removed_days=add_base_date(s.removed_days, base_date),
         ))
     return result
 
 
 def build_calendar(services: list[CalendarService],
-                   base_date: date | None = None) -> gtfs.Calendar:
+                   base_date: date | None = None) -> gtfs.Services:
     def to_int(d: date | None) -> int:
         return 0 if not d else int(d.strftime('%Y%m%d'))
 
@@ -102,25 +101,10 @@ def build_calendar(services: list[CalendarService],
                 prev = d
         return result
 
-    def find_or_add(dates: list[int], data: list[list[int]]) -> int:
-        """Modifies the data!"""
-        for i, stored in enumerate(data):
-            if len(stored) == len(dates):
-                found = True
-                for j, v in enumerate(dates):
-                    if v != stored[j]:
-                        found = False
-                        break
-                if found:
-                    return i
-        data.append(dates)
-        return len(data) - 1
-
     if not base_date:
         base_date = date.today() - timedelta(days=2)
 
-    dates: list[list[int]] = [[]]
-    c = gtfs.Calendar(base_date=to_int(base_date))
+    c = gtfs.Services(base_date=to_int(base_date))
     for s in services:
         if not s.end_date:
             end_date = base_date
@@ -129,17 +113,15 @@ def build_calendar(services: list[CalendarService],
             end_date = base_date + timedelta(days=1)
         else:
             end_date = s.end_date
-        c.services.append(gtfs.CalendarService(
+        c.services.append(gtfs.Service(
             service_id=s.service_id,
             start_date=(0 if not s.start_date or s.start_date < base_date
                         else (s.start_date - base_date).days),
             end_date=(end_date - base_date).days,
             weekdays=sum(1 << i for i in range(7) if s.weekdays[i]),
-            added_days=find_or_add(pack_dates(s.added_days, base_date), dates),
-            removed_days=find_or_add(pack_dates(s.removed_days, base_date), dates),
+            added_days=pack_dates(s.added_days, base_date),
+            removed_days=pack_dates(s.removed_days, base_date),
         ))
-    for d in dates:
-        c.dates.append(gtfs.CalendarDates(dates=d))
     return c
 
 

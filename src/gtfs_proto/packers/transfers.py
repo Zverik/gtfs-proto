@@ -64,15 +64,15 @@ class TransfersPacker(BasePacker):
             return 0
         v = int(value.strip())
         if v == 0:
-            return gtfs.T_POSSIBLE
+            return gtfs.TR_POSSIBLE
         if v == 1:
-            return gtfs.T_DEPARTURE_WAITS
+            return gtfs.TR_DEPARTURE_WAITS
         if v == 2:
-            return gtfs.T_NEEDS_TIME
+            return gtfs.TR_NEEDS_TIME
         if v == 3:
-            return gtfs.T_NOT_POSSIBLE
+            return gtfs.TR_NOT_POSSIBLE
         if v == 4:
-            return gtfs.T_IN_SEAT
+            return gtfs.TR_IN_SEAT
         if v == 5:
-            return gtfs.T_IN_SEAT_FORBIDDEN
+            return gtfs.TR_IN_SEAT_FORBIDDEN
         raise ValueError(f'Unknown transfer type: {v}')

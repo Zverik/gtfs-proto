@@ -1,4 +1,4 @@
-/** Copyright (c) 2023 Ilya Zverev. <ilya@zverev.info>
+/** Copyright (c) 2026 Ilya Zverev. <ilya@zverev.info>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -24,7 +24,12 @@ syntax = "proto3";
 
 package gtfs;
 
-/* The file starts with a 2-byte header length. */
+/* The file starts with a 6-byte header:
+ * - 'T' 'F' or 'T' 'D', two ASCII characters for GtfsHeader or GtfsDelta.
+ * - '1', protocol version plus 0x30.
+ * - 0x0A, line feed symbol.
+ * - two-byte length of the header, big-endian.
+ */
 
 /* This is the file header with block sizes.
 Fields can come in any order, but in the file, blocks are
@@ -48,7 +53,7 @@ message GtfsHeader {
   // TODO: maybe leave the compression to external tools, on a file level?
   bool compressed = 4;
 
-  // Array in order and matching the Blocks enum.
+  // Array in order and matching the Blocks enum. Sizes of blocks, not offsets.
   repeated uint32 blocks = 5;
 }
 
@@ -65,38 +70,31 @@ message Agency {
   uint32 agency_id = 1; // identifiers are renumbered
   string name = 2;
   string url = 3;
-  uint32 timezone = 4; // strings reference
+  string timezone = 4;
   string lang = 5;
   string phone = 6;
   string fare_url = 7;
   string email = 8;
 }
 
-message Calendar {
+message Services {
   // A number just like in GTFS: e.g. 20240821.
   // All service dates use offsets in days from it.
   uint32 base_date = 1;
-
-  // Most holidays will be the same I guess.
-  repeated CalendarDates dates = 2; // first is empty
-  repeated CalendarService services = 3;
+  repeated Service services = 2;
 }
 
-message CalendarDates {
-  // First is offset from base_date, each consequtive
-  // is stored as an offset to previous.
-  repeated uint32 dates = 1;
-}
-
-message CalendarService {
+message Service {
   uint32 service_id = 1;
-  uint32 start_date = 2; // offset from base_date
+  uint32 start_date = 2; // offset from base_date, non-zero
   uint32 end_date = 3; // offset from base_date
   uint32 weekdays = 4; // binary: 1 for Monday, 2 for Tuesday, 4 for Wednesday etc.
 
   // These fields come from calendar_days.txt.
-  uint32 added_days = 5; // references CalendarDates
-  uint32 removed_days = 6; // references CalendarDates
+  // The first value is offset from base_date, each consequtive
+  // is stored as an offset to previous.
+  repeated uint32 added_days = 5;
+  repeated uint32 removed_days = 6;
 }
 
 message Shapes {
@@ -144,13 +142,14 @@ message Stop {
   uint32 parent_id = 8;
   Accessibility wheelchair = 9;
   string platform_code = 10;
-  string external_str_id = 11; // external id for linking, as string
-  uint32 external_int_id = 12; // external id for linking, as number
+  uint32 zone = 11;
+  repeated uint32 areas = 12;
+
   bool delete = 13;
 }
 
 enum LocationType {
-  L_STOP = 0;
+  L_STOP = 0; // same as unspecified, the default
   L_STATION = 1;
   L_EXIT = 2;
   L_NODE = 3;
@@ -170,7 +169,7 @@ message Routes {
 
 message Route {
   uint32 route_id = 1; // renumbered
-  uint32 agency_id = 2;
+  uint32 agency_id = 2; // optional if there's just a single agency
   string short_name = 3;
   // Long name is assumed to be in format "Stop 1 - Stop 2 - Stop 3".
   // Each part is a strings reference.
@@ -182,54 +181,61 @@ message Route {
   uint32 text_color = 8;
   PickupDropoff continuous_pickup = 9;
   PickupDropoff continuous_dropoff = 10;
+  uint32 network = 11;
 
-  repeated RouteItinerary itineraries = 11; // to skip route_id there.
   bool delete = 12;
 }
 
 // See also https://developers.google.com/transit/gtfs/reference/extended-route-types
 enum RouteType {
-  // Renumbered to have the bus at 0 to save space.
-  BUS = 0; // 3 and all 7xx
-  TRAM = 1; // 0 and all 9xx
-  SUBWAY = 2; // 1 and also 401-402
-  RAIL = 3; // 2 and all 1xx
-  FERRY = 4; // also 1200
-  CABLE_TRAM = 5; // maybe 1302 but not sure
-  AERIAL = 6; // also 13xx
-  FUNICULAR = 7; // also 1400
-  COMMUNAL_TAXI = 9; // 1501
-  COACH = 10; // all 200-209
-  TROLLEYBUS = 11; // also 800
-  MONORAIL = 12; // also 405
+  T_BUS = 0; // 3 and all 7xx (buses are the default to keep space)
+  T_TRAM = 1; // 0 and all 9xx
+  T_SUBWAY = 2; // 1 and 401-402
+  T_RAIL = 3; // 2 and all 1xx
+  T_FERRY = 4; // 4 and 1200
+  T_CABLE_TRAM = 5; // 5 and maybe 1302 but not sure
+  T_AERIAL = 6; // 6 and 13xx
+  T_FUNICULAR = 7; // 7 and 1400
+  T_COMMUNAL_TAXI = 9; // 1501
+  T_COACH = 10; // all 200-209
+  T_TROLLEYBUS = 11; // 11 and 800
+  T_MONORAIL = 12; // 12 and 405
 
-  URBAN_RAIL = 21; // 400, 403-404
-  WATER = 22; // 1000
-  AIR = 23; // 1100
-  TAXI = 24; // all 15xx except 1501
-  MISC = 25; // 17xx
+  T_URBAN_RAIL = 21; // 400, 403-404
+  T_WATER = 22; // 1000
+  T_AIR = 23; // 1100
+  T_TAXI = 24; // all 15xx except 1501
+  T_MISC = 25; // 17xx
 }
 
 enum PickupDropoff {
-  PD_NO = 0;
-  PD_YES = 1;
+  PD_YES = 0; // the default, for unspecified
+  PD_NO = 1;
   PD_PHONE_AGENCY = 2;
   PD_TELL_DRIVER = 3;
 }
 
-/* Note that RouteTrip does not exactly mirror trips.txt.
-It takes a list of stops from stop_times.txt, hence there can be multiple.
-Also it doesn't mean one trip, but multiple with the same parameters. */
-message RouteItinerary {
+message Itineraries {
+  repeated Itinerary itineraries = 1;
+}
+
+/* A sequence of bus stops for a trip is an Itinerary.
+Often there are multiple trips during the day through the same stops,
+so this helps save the bytes. */
+message Itinerary {
   uint32 itinerary_id = 1; // guaranteed to be unique throughout the entire feed
-  uint32 headsign = 2; // strings reference
-  bool opposite_direction = 3;
-  repeated uint32 stops = 4;
+  uint32 route_id = 2; // deleting if zero / skipped
+  repeated uint32 stops = 3;
+  bool opposite_direction = 4;
   uint32 shape_id = 5;
 
-  // In case a bus changes its headsigns on a route.
-  // Zero when the same as the last. References strings.
-  repeated uint32 stop_headsigns = 6;
+  // List of headsigns for every stop. Those are string references.
+  // Zero when the same as the last. Trimmed at the last non-zero value.
+  repeated uint32 headsigns = 6;
+
+  // If shorter than stops, repeat the last value.
+  repeated PickupDropoff pickup_types = 7;
+  repeated PickupDropoff dropoff_types = 8;
 }
 
 message Trips {
@@ -239,15 +245,18 @@ message Trips {
 /* This message encapsulates both trips and stop_times. */
 message Trip {
   uint32 trip_id = 1; // renumbered
-  uint32 service_id = 2;
-  uint32 itinerary_id = 3; // for properties and order of stops.
+  uint32 itinerary_id = 2; // for properties and order of stops. Deleting if zero/skipped
+  uint32 service_id = 3;
   string short_name = 4;
   Accessibility wheelchair = 5;
   Accessibility bikes = 6;
+
+  // schedule-based: whether we can trust every timestamp for departures/arrivals.
+  // frequency-based: whether the intervals are exact.
   bool approximate = 7;
 
   // Granularity is 5 seconds.
-  // First number is (hours * 720) + (minutes * 12) + (seconds / 5), rounded.
+  // First number is (hours * 720) + (minutes * 12) + (seconds / 5), rounded down.
   // After that, differences from previous time.
   // Mind the accumulated rounding error!
   // Zero (0) for a departure means an absent value.
@@ -255,16 +264,13 @@ message Trip {
   // Counted from same departures (backwards), truncated to the last non-zero value.
   repeated uint32 arrivals = 9;
 
-  // Both truncated to the last non-empty value.
-  repeated PickupDropoff pickup_types = 10;
-  repeated PickupDropoff dropoff_types = 11;
-
-  // For frequency-based trips, field 8 is empty, and those three are present.
-  // Granularity is 1 minute. Values are, hours * 60 + minutes.
-  uint32 start_time = 12;
-  uint32 end_time = 13;
-  // Here, granularity is 1 seconds, like in GTFS. No point in saving a byte.
-  uint32 interval = 14;
+  // For frequency-based trips, those three are present.
+  // Granularity is 10 seconds. Values are, hours * 360 + minutes * 6 + seconds / 10.
+  // Rounding down for start and up for end.
+  uint32 start_time = 10;
+  uint32 end_time = 11;
+  // Here, granularity is 1 second, like in GTFS. No point in saving a byte.
+  uint32 interval = 12;
 }
 
 message Transfers {
@@ -284,30 +290,22 @@ message Transfer {
 }
 
 enum TransferType {
-  T_POSSIBLE = 0;
-  T_DEPARTURE_WAITS = 1;
-  T_NEEDS_TIME = 2;
-  T_NOT_POSSIBLE = 3;
-  T_IN_SEAT = 4;
-  T_IN_SEAT_FORBIDDEN = 5;
+  TR_POSSIBLE = 0; // default, also unspecified
+  TR_DEPARTURE_WAITS = 1;
+  TR_NEEDS_TIME = 2;
+  TR_NOT_POSSIBLE = 3;
+  TR_IN_SEAT = 4;
+  TR_IN_SEAT_FORBIDDEN = 5;
 }
 
-/* These lists extract area_id and zone_id from stops,
-and network_ids from routes, to easier decouple fares. */
-
-message FareLinks {
-  // Zero if the value is the same as the last one.
-  // Trailing zeroes are cut.
-  repeated uint32 stop_area_ids = 1;
-  repeated uint32 stop_zone_ids = 2;
-  repeated uint32 route_network_ids = 3;
-}
 
 // TODO: Fares
 
 
 /* IdStore is for keeping track of source identifiers and making
-extracts between versions consistent. */
+extracts between versions consistent. You do not have to keep all ids
+if you don't use them: renumbered ids are often enough for updates
+and cross-referencing. */
 
 message IdStore {
   repeated IdReference refs = 1;
@@ -321,35 +319,30 @@ message IdReference {
 
 // These go in the file order.
 enum Block {
-  B_HEADER = 0;  // GtfsHeader
+  B_HEADER = 0;  // GtfsHeader, never actually appears
   B_IDS = 1;     // IdStore → IdReference
   B_STRINGS = 2; // StringTable
 
   // First, dictionaries that are referenced by other tables.
   B_AGENCY = 3;   // Agencies → Agency
-  B_CALENDAR = 4; // Calendar
+  B_SERVICES = 4; // Services → base_date + Service
   B_SHAPES = 5;   // Shapes → Shape
 
   // And here, the core: stops, routes, and fares.
-  B_STOPS = 6;     // Stops → Stop
-  B_ROUTES = 7;    // Routes → Route
-  B_TRIPS = 8;     // Trips → Trip
-  B_TRANSFERS = 9; // Transfers → Transfer
+  B_STOPS = 6;       // Stops → Stop
+  B_ROUTES = 7;      // Routes → Route
+  B_ITINERARIES = 8; // Itineraries → Itinerary
+  B_TRIPS = 9;       // Trips → Trip
+  B_TRANSFERS = 10;  // Transfers → Transfer
 
   // Fare-related tables.
-  B_NETWORKS = 10;   // Networks
-  B_AREAS = 11;      // Areas
-  B_FARE_LINKS = 12; // FareLinks
-  B_FARES = 13;      // TODO
-
-  // Following blocks are not actually written, but needed for indexing.
-  B_ITINERARIES = 14;
-  B_ZONES = 15;
+  B_NETWORKS = 11; // Networks
+  B_AREAS = 12;    // Areas
+  B_ZONES = 13;    // no related message, zones are only zone_ids
 }
 
 
-/* Deltas use mostly the same messages, but some are changed.
-The header length is added to 0x8000. */
+/* Deltas use mostly the same messages, but some are changed. */
 
 message GtfsDeltaHeader {
   uint32 old_version = 1;
@@ -363,13 +356,12 @@ message GtfsDeltaHeader {
 // - Note that if delta_skip is larger than the length of ids for a block,
 //   that means that's the wrong delta file to apply.
 
-// StringTable: all used strings are added to it anew.
+// StringTable: all used strings are added to it anew, we do not expect a client to keep old strings.
 
 // Agencies: zero element for same, non-zero for change or addition.
 
-// Calendar: first, base_date is applied only to new and changed records.
-// CalendarDates: rebuilt from scratch using old dates and new/changed.
-// CalendarService: zero for deleted service; new and changed specify every field.
+// Services: base_date is specific to the feed and applied only to new and changed records.
+// Service: start_date is zero for deleted service; new and changed specify every field.
 
 // Shapes: Shape with just an id to delete, with locations - change or add.
 
@@ -377,22 +369,14 @@ message GtfsDeltaHeader {
 // empty fields stay the same. Fields "wheelchair" and "type" are always set for changed.
 // New ids should continue the sequence.
 
-// Routes: like stops, and same for itineraries inside.
+// Routes: list stops, but for changed, all fields except names and desc are always filled.
+// Itineraries: either created or deleted, there's no change option.
 
 // Trips: like stops: specify just an id to delete, some information when changed,
 // all info when adding a new one. New ids should continue the sequence.
-// Fields "wheelchair" and "bikes" are always set for changed.
+// Fields "wheelchair", "bikes", and "approximate" are always set for changed.
 
 // Transfers: first six fields serve as a primary key. Uses "delete" field to delete,
 // otherwise add/change with full data inside.
 
 // Networks and Areas: listing only new and changed names in the maps.
-
-// FareLinks: use this new message instead, with the same block id:
-
-message FareLinksDelta {
-  // Second value is zero when the link is deleted.
-  map<uint32, uint32> stop_area_ids = 1;
-  map<uint32, uint32> stop_zone_ids = 2;
-  map<uint32, uint32> route_network_ids = 3;
-}

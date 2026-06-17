@@ -1,84 +1,38 @@
-from .base import BasePacker, StringCache, IdReference, FareLinks
+from .base import BasePacker, StringCache, IdReference
 from typing import TextIO
 from zipfile import ZipFile
-from collections import defaultdict
-from dataclasses import dataclass
-from hashlib import md5
 from .. import gtfs_pb2 as gtfs
 
 
-@dataclass
-class StopData:
-    seq_id: int
-    stop_id: int
-    headsign: int | None
-
-
-class Trip:
-    def __init__(self, trip_id: int, row: dict[str, str],
-                 stops: list[StopData], shape_id: int | None):
-        self.trip_id = trip_id
-        self.headsign = row.get('trip_headsign')
-        self.opposite = row.get('direction_id') == '1'
-        self.stops = [s.stop_id for s in stops]
-        self.shape_id = shape_id
-        self.headsigns = [s.headsign for s in stops]
-
-        # Generate stops key.
-        m = md5(usedforsecurity=False)
-        m.update(row['route_id'].encode())
-        for s in self.stops:
-            m.update(s.to_bytes(4))
-        self.stops_key = m.hexdigest()
-
-    def __hash__(self) -> int:
-        return hash(self.stops_key)
-
-    def __eq__(self, other):
-        return self.stops_key == other.stops_key
-
-
 class RoutesPacker(BasePacker):
-    def __init__(self, z: ZipFile, strings: StringCache, id_store: dict[int, IdReference],
-                 fl: FareLinks):
+    def __init__(self, z: ZipFile, strings: StringCache, id_store: dict[int, IdReference]):
         super().__init__(z, strings, id_store)
-        self.fl = fl
-        # trip_id → itinerary_id
-        self.trip_itineraries: dict[int, int] = {}
 
     @property
     def block(self):
         return gtfs.B_ROUTES
 
     def pack(self) -> list[gtfs.Route]:
-        with self.open_table('stop_times') as f:
-            trip_stops = self.read_trip_stops(f)
-        with self.open_table('trips') as f:
-            itineraries, self.trip_itineraries = self.read_itineraries(f, trip_stops)
-        with self.open_table('routes') as f:
-            r = self.prepare(f, itineraries)
+        networks = {}
         if self.has_file('route_networks'):
             with self.open_table('route_networks') as f:
-                self.read_route_networks(f)
+                networks = self.read_route_networks(f)
+        with self.open_table('routes') as f:
+            r = self.prepare(f, networks)
         return r
 
-    def prepare(self, fileobj: TextIO,
-                itineraries: dict[str, list[gtfs.RouteItinerary]]) -> list[gtfs.Route]:
+    def prepare(self, fileobj: TextIO, networks: dict[str, int]) -> list[gtfs.Route]:
         routes: list[gtfs.Route] = []
         agency_ids = self.id_store[gtfs.B_AGENCY]
         network_ids = self.id_store[gtfs.B_NETWORKS]
         for row, route_id, orig_route_id in self.table_reader(fileobj, 'route_id'):
-            # Skip routes for which we don't have any trips.
-            if orig_route_id not in itineraries:
-                continue
-
-            route = gtfs.Route(route_id=route_id, itineraries=itineraries[orig_route_id])
+            route = gtfs.Route(route_id=route_id)
             if row.get('agency_id'):
                 route.agency_id = agency_ids[row['agency_id']]
-
             if row.get('network_id'):
-                self.fl.route_networks[route_id] = network_ids.add(row['network_id'])
-
+                route.network = network_ids.add(row['network_id'])
+            elif orig_route_id in networks:
+                route.network = networks[orig_route_id]
             if row.get('route_short_name', ''):
                 route.short_name = row['route_short_name']
             if row.get('route_long_name', ''):
@@ -98,94 +52,47 @@ class RoutesPacker(BasePacker):
             routes.append(route)
         return routes
 
-    def read_route_networks(self, fileobj: TextIO):
+    def read_route_networks(self, fileobj: TextIO) -> dict[str, int]:
+        networks = {}
         for row, network_id, _ in self.table_reader(fileobj, 'network_id', gtfs.B_NETWORKS):
-            self.fl.route_networks[self.ids.add(row['route_id'])] = network_id
-
-    def read_itineraries(self, fileobj: TextIO, trip_stops: dict[int, list[StopData]]
-                         ) -> tuple[dict[str, list[gtfs.RouteItinerary]], dict[int, int]]:
-        trips: dict[str, list[Trip]] = defaultdict(list)  # route_id -> list[Trip]
-        for row, trip_id, orig_trip_id in self.table_reader(fileobj, 'trip_id', gtfs.B_TRIPS):
-            stops = trip_stops.get(trip_id)
-            if not stops:
-                continue
-            shape_id = (None if not row.get('shape_id')
-                        else self.id_store[gtfs.B_SHAPES].ids[row['shape_id']])
-            trips[row['route_id']].append(Trip(trip_id, row, stops, shape_id))
-
-        # Now we have a list of itinerary-type trips which we need to deduplicate.
-        # Note: since we don't have original ids, we need to keep them stable.
-        # Since the only thing that matters is an order of stops, we use stops' hash as the key.
-
-        result: dict[str, list[gtfs.RouteItinerary]] = defaultdict(list)
-        trip_itineraries: dict[int, int] = {}
-        ids = self.id_store[gtfs.B_ITINERARIES]
-
-        for route_id, trip_list in trips.items():
-            for trip in set(trip_list):
-                itin = gtfs.RouteItinerary(
-                    itinerary_id=ids.add(trip.stops_key),
-                    opposite_direction=trip.opposite,
-                    stops=trip.stops,
-                    shape_id=trip.shape_id,
-                )
-                if trip.headsign:
-                    itin.headsign = self.strings.add(trip.headsign)
-
-                result[route_id].append(itin)
-                for t in trip_list:
-                    if t.stops_key == trip.stops_key:
-                        trip_itineraries[t.trip_id] = itin.itinerary_id
-
-        return result, trip_itineraries
-
-    def read_trip_stops(self, fileobj: TextIO) -> dict[int, list[StopData]]:
-        trip_stops: dict[int, list[StopData]] = {}  # trip_id -> int_stop_id, string_id
-        for rows, trip_id, orig_trip_id in self.sequence_reader(
-                fileobj, 'trip_id', 'stop_sequence', gtfs.B_TRIPS):
-            trip_stops[trip_id] = [StopData(
-                seq_id=int(row['stop_sequence']),
-                # The stop should be already in the table.
-                stop_id=self.id_store[gtfs.B_STOPS].ids[row['stop_id']],
-                headsign=self.strings.add(row.get('stop_headsign')),
-            ) for row in rows]
-        return trip_stops
+            networks[row['route_id']] = network_id
+        return networks
 
     def route_type_to_enum(self, t: int) -> int:
         if t == 0 or t // 100 == 9:
-            return gtfs.RouteType.TRAM
+            return gtfs.RouteType.T_TRAM
         if t in (1, 401, 402):
-            return gtfs.RouteType.SUBWAY
+            return gtfs.RouteType.T_SUBWAY
         if t == 2 or t // 100 == 1:
-            return gtfs.RouteType.RAIL
+            return gtfs.RouteType.T_RAIL
         if t == 3 or t // 100 == 7:
-            return gtfs.RouteType.BUS
+            return gtfs.RouteType.T_BUS
         if t == 4 or t == 1200:
-            return gtfs.RouteType.FERRY
+            return gtfs.RouteType.T_FERRY
         if t == 5 or t == 1302:
-            return gtfs.RouteType.CABLE_TRAM
+            return gtfs.RouteType.T_CABLE_TRAM
         if t == 6 or t // 100 == 13:
-            return gtfs.RouteType.AERIAL
+            return gtfs.RouteType.T_AERIAL
         if t == 7 or t == 1400:
-            return gtfs.RouteType.FUNICULAR
+            return gtfs.RouteType.T_FUNICULAR
         if t == 1501:
-            return gtfs.RouteType.COMMUNAL_TAXI
+            return gtfs.RouteType.T_COMMUNAL_TAXI
         if t // 100 == 2:
-            return gtfs.RouteType.COACH
+            return gtfs.RouteType.T_COACH
         if t == 11 or t == 800:
-            return gtfs.RouteType.TROLLEYBUS
+            return gtfs.RouteType.T_TROLLEYBUS
         if t == 12 or t == 405:
-            return gtfs.RouteType.MONORAIL
+            return gtfs.RouteType.T_MONORAIL
         if t in (400, 403, 403):
-            return gtfs.RouteType.URBAN_RAIL
+            return gtfs.RouteType.T_URBAN_RAIL
         if t == 1000:
-            return gtfs.RouteType.WATER
+            return gtfs.RouteType.T_WATER
         if t == 1100:
-            return gtfs.RouteType.AIR
+            return gtfs.RouteType.T_AIR
         if t // 100 == 15:
-            return gtfs.RouteType.TAXI
+            return gtfs.RouteType.T_TAXI
         if t // 100 == 17:
-            return gtfs.RouteType.MISC
+            return gtfs.RouteType.T_MISC
         raise ValueError(f'Wrong route type {t}')
 
     def parse_route_long_name(self, name: str) -> list[int]:

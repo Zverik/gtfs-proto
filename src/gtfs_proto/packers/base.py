@@ -1,5 +1,5 @@
 from .. import gtfs_pb2 as gtfs
-from ..base import IdReference, FareLinks, StringCache
+from ..base import IdReference, StringCache
 from abc import ABC, abstractmethod
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -9,7 +9,7 @@ from typing import TextIO, Any
 from zipfile import ZipFile
 
 
-__all__ = ['BasePacker', 'StringCache', 'FareLinks', 'IdReference']
+__all__ = ['BasePacker', 'StringCache', 'IdReference']
 
 
 class BasePacker(ABC):
@@ -58,6 +58,9 @@ class BasePacker(ABC):
         cur_ids: list[int] = []
         cur_lists: list[list[tuple[int, str, dict]]] = []
         seen_ids: set[int] = set()
+
+        # TODO: make it a running yield, DO NOT load the entire file to memory.
+        # E.g. allow for N (e.g. 100) entries buffer when the current sequence ends.
         for row, row_id, orig_id in self.table_reader(fileobj, id_column, ids_block):
             # Find the row_id index. From the tail, because latest ids are appended there.
             idx = len(cur_ids) - 1

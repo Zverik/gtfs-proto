@@ -18,7 +18,7 @@ class CalendarPacker(BasePacker):
 
     @property
     def block(self):
-        return gtfs.B_CALENDAR
+        return gtfs.B_SERVICES
 
     def pack(self):
         dates = CalendarDates()
@@ -44,7 +44,7 @@ class CalendarPacker(BasePacker):
         return dates
 
     def prepare_calendar(
-            self, fileobj: TextIO | None, dates: CalendarDates) -> bytes:
+            self, fileobj: TextIO | None, dates: CalendarDates) -> gtfs.Services:
         services: list[CalendarService] = []
         seen_ids: set[int] = set()
         if fileobj:

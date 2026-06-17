@@ -3,7 +3,7 @@ import sys
 import json
 from typing import Any
 from .wrapper import (
-    GtfsProto, gtfs, GtfsDelta, FareLinks, is_gtfs_delta, GtfsBlocks
+    GtfsProto, gtfs, GtfsDelta, is_gtfs_delta, GtfsBlocks
 )
 
 
@@ -13,18 +13,17 @@ BLOCKS = {
     'strings': gtfs.B_STRINGS,
 
     'agency': gtfs.B_AGENCY,
-    'calendar': gtfs.B_CALENDAR,
+    'services': gtfs.B_SERVICES,
     'shapes': gtfs.B_SHAPES,
 
     'stops': gtfs.B_STOPS,
     'routes': gtfs.B_ROUTES,
+    'itineraries': gtfs.B_ITINERARIES,
     'trips': gtfs.B_TRIPS,
     'transfers': gtfs.B_TRANSFERS,
 
     'networks': gtfs.B_NETWORKS,
     'areas': gtfs.B_AREAS,
-    'fare_links': gtfs.B_FARE_LINKS,
-    'fares': gtfs.B_FARES,
 
     # Not actual blocks.
     'version': -1,
@@ -38,10 +37,10 @@ def read_count(block: gtfs.Block, data: bytes) -> dict[str, Any]:
         agencies = gtfs.Agencies()
         agencies.ParseFromString(data)
         return {COUNT: len(agencies.agencies)}
-    elif block == gtfs.B_CALENDAR:
-        calendar = gtfs.Calendar()
+    elif block == gtfs.B_SERVICES:
+        calendar = gtfs.Services()
         calendar.ParseFromString(data)
-        return {'dates': len(calendar.dates), COUNT: len(calendar.services)}
+        return {COUNT: len(calendar.services)}
     elif block == gtfs.B_SHAPES:
         shapes = gtfs.Shapes()
         shapes.ParseFromString(data)
@@ -65,10 +64,11 @@ def read_count(block: gtfs.Block, data: bytes) -> dict[str, Any]:
     elif block == gtfs.B_ROUTES:
         routes = gtfs.Routes()
         routes.ParseFromString(data)
-        return {
-            COUNT: len(routes.routes),
-            'itineraries': sum(len(r.itineraries) for r in routes.routes)
-        }
+        return {COUNT: len(routes.routes)}
+    elif block == gtfs.B_ITINERARIES:
+        itin = gtfs.Itineraries()
+        itin.ParseFromString(data)
+        return {COUNT: len(itin.itineraries)}
     elif block == gtfs.B_TRIPS:
         trips = gtfs.Trips()
         trips.ParseFromString(data)
@@ -77,15 +77,6 @@ def read_count(block: gtfs.Block, data: bytes) -> dict[str, Any]:
         tr = gtfs.Transfers()
         tr.ParseFromString(data)
         return {COUNT: len(tr.transfers)}
-    elif block == gtfs.B_FARE_LINKS:
-        pass  # TODO
-        # fl = gtfs.FareLinks()
-        # fl.ParseFromString(data)
-        # return {
-        #     'stop_zones': len(fl.stop_zone_ids),
-        #     'stop_areas': len(fl.stop_area_ids),
-        #     'route_networks': len(fl.route_network_ids),
-        # }
     return {}
 
 
@@ -150,11 +141,8 @@ def print_agency(a: gtfs.Agency, oid: str | None):
     })
 
 
-def print_calendar(c: gtfs.Calendar):
+def print_calendar(c: gtfs.Services):
     print(json.dumps({'base_date': c.base_date}))
-    print(json.dumps({
-        'dates': {i: list(dt.dates) for i, dt in enumerate(c.dates)},
-    }))
     for s in c.services:
         print_skip_empty({
             'service_id': s.service_id,
@@ -190,42 +178,31 @@ def print_stop(s: gtfs.Stop, oid: str | None):
         'parent_id': s.parent_id or None,
         'wheelchair': None if not s.wheelchair else ACC_TYPES[s.wheelchair],
         'platform_code': s.platform_code,
-        'external_str_id': s.external_str_id,
-        'external_int_id': s.external_int_id or None,
         'delete': s.delete,
     })
 
 
 def print_route(r: gtfs.Route, oid: str | None):
-    def prepare_itinerary(i: gtfs.RouteItinerary) -> dict[str, Any]:
-        return {k: v for k, v in {
-            'itinerary_id': i.itinerary_id,
-            'headsign': i.headsign or None,
-            'opposite_direction': i.opposite_direction or None,
-            'stops': list(i.stops),
-            'shape_id': i.shape_id or None,
-        }.items() if v is not None}
-
     ROUTE_TYPES = {
-        0: 'bus',
-        1: 'tram',
-        2: 'subway',
-        3: 'rail',
-        4: 'ferry',
-        5: 'cable_tram',
-        6: 'aerial',
-        7: 'funicular',
-        9: 'communal_taxi',
-        10: 'coach',
-        11: 'trolleybus',
-        12: 'monorail',
-        21: 'urban_rail',
-        22: 'water',
-        23: 'air',
-        24: 'taxi',
-        25: 'misc',
+        gtfs.T_BUS: 'bus',
+        gtfs.T_TRAM: 'tram',
+        gtfs.T_SUBWAY: 'subway',
+        gtfs.T_RAIL: 'rail',
+        gtfs.T_FERRY: 'ferry',
+        gtfs.T_CABLE_TRAM: 'cable_tram',
+        gtfs.T_AERIAL: 'aerial',
+        gtfs.T_FUNICULAR: 'funicular',
+        gtfs.T_COMMUNAL_TAXI: 'communal_taxi',
+        gtfs.T_COACH: 'coach',
+        gtfs.T_TROLLEYBUS: 'trolleybus',
+        gtfs.T_MONORAIL: 'monorail',
+        gtfs.T_URBAN_RAIL: 'urban_rail',
+        gtfs.T_WATER: 'water',
+        gtfs.T_AIR: 'air',
+        gtfs.T_TAXI: 'taxi',
+        gtfs.T_MISC: 'misc',
     }
-    PD_TYPES = ['no', 'yes', 'phone_agency', 'tell_driver']
+    PD_TYPES = ['yes', 'no', 'phone_agency', 'tell_driver']
     print_skip_empty({
         'route_id': r.route_id,
         'original_id': oid,
@@ -238,27 +215,37 @@ def print_route(r: gtfs.Route, oid: str | None):
         'text_color': None if not r.text_color else f'{r.text_color:#08x}',
         'continuous_pickup': None if not r.continuous_pickup else PD_TYPES[r.continuous_pickup],
         'continuous_dropoff': None if not r.continuous_dropoff else PD_TYPES[r.continuous_dropoff],
-        'itineraries': [prepare_itinerary(i) for i in r.itineraries] or None,
         'delete': r.delete,
+    })
+
+
+def print_itinerary(i: gtfs.Itinerary):
+    PD_TYPES = ['yes', 'no', 'phone_agency', 'tell_driver']
+    print_skip_empty({
+        'itinerary_id': i.itinerary_id,
+        'route_id': i.route_id,
+        'opposite_direction': i.opposite_direction or None,
+        'stops': list(i.stops),
+        'shape_id': i.shape_id or None,
+        'headsigns': list(i.headsigns),
+        'pickup_types': [PD_TYPES[p] for p in i.pickup_types] or None,
+        'dropoff_types': [PD_TYPES[p] for p in i.dropoff_types] or None,
     })
 
 
 def print_trip(t: gtfs.Trip, oid: str | None):
     ACC_TYPES = ['unknown', 'some', 'no']
-    PD_TYPES = ['no', 'yes', 'phone_agency', 'tell_driver']
     print_skip_empty({
         'trip_id': t.trip_id,
         'original_id': oid,
-        'service_id': t.service_id or None,
         'itinerary_id': t.itinerary_id or None,
+        'service_id': t.service_id or None,
         'short_name': t.short_name,
         'wheelchair': None if not t.wheelchair else ACC_TYPES[t.wheelchair],
         'bikes': None if not t.bikes else ACC_TYPES[t.bikes],
         'approximate': t.approximate or None,
         'arrivals': list(t.arrivals) or None,
         'departures': list(t.departures) or None,
-        'pickup_types': [PD_TYPES[p] for p in t.pickup_types] or None,
-        'dropoff_types': [PD_TYPES[p] for p in t.dropoff_types] or None,
         'start_time': t.start_time or None,
         'end_time': t.end_time or None,
         'interval': t.interval or None,
@@ -278,12 +265,6 @@ def print_transfer(t: gtfs.Transfer):
         'type': None if not t.type else TTYPES[t.type],
         'min_transfer_time': t.min_transfer_time or None,
     })
-
-
-def print_fare_links(fl: FareLinks):
-    print(json.dumps({'stop_area_ids': fl.stop_areas}))
-    print(json.dumps({'stop_zone_ids': fl.stop_zones}))
-    print(json.dumps({'route_network_ids': fl.route_networks}))
 
 
 def info():
@@ -317,7 +298,7 @@ def info():
         except ValueError:
             int_id = -1
 
-        block = BLOCKS[options.part]
+        block = BLOCKS[options.block]
 
         if options.block == 'version':
             print(feed.header.version)
@@ -335,8 +316,8 @@ def info():
                 oid = feed.id_store[block].original.get(a.agency_id)
                 if not for_id or a.agency_id == int_id or oid == for_id:
                     print_agency(a, oid)
-        elif block == gtfs.B_CALENDAR:
-            print_calendar(feed.calendar)
+        elif block == gtfs.B_SERVICES:
+            print_calendar(feed.services)
         elif block == gtfs.B_SHAPES:
             for s in feed.shapes:
                 oid = feed.id_store[block].original.get(s.shape_id)
@@ -361,6 +342,9 @@ def info():
                 oid = feed.id_store[block].original.get(r.route_id)
                 if not for_id or r.route_id == int_id or oid == for_id:
                     print_route(r, oid)
+        elif block == gtfs.B_ITINERARIES:
+            for t in feed.itineraries:
+                print_itinerary(t)
         elif block == gtfs.B_TRIPS:
             for t in feed.trips:
                 oid = feed.id_store[block].original.get(t.trip_id)
@@ -369,8 +353,6 @@ def info():
         elif block == gtfs.B_TRANSFERS:
             for t in feed.transfers:
                 print_transfer(t)
-        elif block == gtfs.B_FARE_LINKS:
-            print_fare_links(feed.fare_links)
         else:
             print(
                 'Sorry, printing blocks of this type is not implemented yet.',

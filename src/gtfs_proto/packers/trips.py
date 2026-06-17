@@ -10,8 +10,6 @@ class StopTime:
     seq_id: int
     arrival: int
     departure: int
-    pickup: gtfs.PickupDropoff
-    dropoff: gtfs.PickupDropoff
     approximate: bool
 
 
@@ -28,11 +26,11 @@ class TripsPacker(BasePacker):
     def pack(self) -> list[gtfs.Trips]:
         with self.open_table('trips') as f:
             trips = self.read_trips(f)
+        with self.open_table('stop_times') as f:
+            self.from_stop_times(f, trips)
         if self.has_file('frequencies'):
             with self.open_table('frequencies') as f:
                 self.from_frequencies(f, trips)
-        with self.open_table('stop_times') as f:
-            self.from_stop_times(f, trips)
         return list(trips.values())
 
     def read_trips(self, fileobj: TextIO) -> dict[int, gtfs.Trip]:
@@ -44,7 +42,7 @@ class TripsPacker(BasePacker):
 
             trips[trip_id] = gtfs.Trip(
                 trip_id=trip_id,
-                service_id=self.id_store[gtfs.B_CALENDAR].ids[row['service_id']],
+                service_id=self.id_store[gtfs.B_SERVICES].ids[row['service_id']],
                 itinerary_id=self.trip_itineraries[trip_id],
                 short_name=row.get('trip_short_name'),
                 wheelchair=self.parse_accessibility(row.get('wheelchair_accessible')),
@@ -68,8 +66,6 @@ class TripsPacker(BasePacker):
                     seq_id=int(row['stop_sequence']),
                     arrival=arrival,
                     departure=departure,
-                    pickup=self.parse_pickup_dropoff(row.get('continuous_pickup')),
-                    dropoff=self.parse_pickup_dropoff(row.get('continuous_drop_off')),
                     approximate=row.get('timepoint') == '0',
                 ))
             self.fill_trip(trips[trip_id], cur_times)
@@ -90,8 +86,6 @@ class TripsPacker(BasePacker):
             # d - a >= 0 because if d == 0, we set it to arrival time in from_stop_times().
             arrivals.append(0 if not a else d - a)
         trip.arrivals.extend(self.cut_empty(arrivals, 0))
-        trip.pickup_types.extend(self.cut_empty([t.pickup for t in times], 0))
-        trip.dropoff_types.extend(self.cut_empty([t.dropoff for t in times], 0))
         trip.approximate = any(t.approximate for t in times)
 
     def cut_empty(self, values: list, zero) -> list:
@@ -105,8 +99,8 @@ class TripsPacker(BasePacker):
             trip = trips[trip_id]  # assuming it's there
             start = self.parse_time(row['start_time']) or 0
             end = self.parse_time(row['end_time']) or 0
-            trip.start_time = round(start / 60)
-            trip.end_time = round(end / 60)
+            trip.start_time = int(start / 10)
+            trip.end_time = int((end + 9) / 10)
             trip.interval = int(row['headway_secs'])
             trip.approximate = row.get('exact_times') == '1'
 
@@ -121,26 +115,10 @@ class TripsPacker(BasePacker):
         return int(tim[:2]) * 3600 + int(tim[3:5]) * 60 + int(tim[6:])
 
     def parse_accessibility(self, value: str | None) -> int:
-        if not value:
-            return 0
-        if value == '0':
+        if not value or value == '0':
             return gtfs.A_UNKNOWN
         if value == '1':
             return gtfs.A_SOME
         if value == '2':
             return gtfs.A_NO
         raise ValueError(f'Unknown accessibility value for a trip: {value}')
-
-    def parse_pickup_dropoff(self, value: str | None) -> int:
-        if not value:
-            return gtfs.PickupDropoff.PD_NO  # 0
-        v = int(value)
-        if v == 0:
-            return gtfs.PickupDropoff.PD_YES
-        if v == 1:
-            return gtfs.PickupDropoff.PD_NO
-        if v == 2:
-            return gtfs.PickupDropoff.PD_PHONE_AGENCY
-        if v == 3:
-            return gtfs.PickupDropoff.PD_TELL_DRIVER
-        raise ValueError(f'Wrong continous pickup / drop_off value: {v}')

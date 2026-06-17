@@ -19,7 +19,7 @@ class AgencyPacker(BasePacker):
                     agency_id=agency_id,
                     name=row['agency_name'],
                     url=row['agency_url'],
-                    timezone=self.strings.add(row['agency_timezone']),
+                    timezone=row['agency_timezone'],
                 )
                 for k in ('lang', 'phone', 'fare_url', 'email'):
                     if row.get(f'agency_{k}'):

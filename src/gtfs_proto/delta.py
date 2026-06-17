@@ -1,7 +1,7 @@
 import argparse
 import datetime as dt
 from . import (
-    GtfsProto, gtfs, GtfsDelta, FareLinks, StringCache,
+    GtfsProto, gtfs, GtfsDelta, StringCache,
     parse_calendar, build_calendar, CalendarService, int_to_date,
 )
 
@@ -53,7 +53,7 @@ class DeltaMaker:
                     ))
         return result
 
-    def calendar(self, c1: gtfs.Calendar, c2: gtfs.Calendar) -> gtfs.Calendar:
+    def services(self, c1: gtfs.Services, c2: gtfs.Services) -> gtfs.Services:
         def cut(dates: list[dt.date], base_date: dt.date) -> list[dt.date]:
             return [d for d in dates if d > base_date]
 
@@ -118,24 +118,21 @@ class DeltaMaker:
                         wheelchair=v.wheelchair,
                         platform_code=('' if old.platform_code == v.platform_code
                                        else v.platform_code),
-                        external_str_id='' if old.external_str_id == v.external_str_id
-                        else v.external_str_id,
-                        external_int_id=0 if old.external_int_id == v.external_int_id
-                        else v.external_int_id,
                     ))
         return result
 
     def itineraries(
-            self, i1: list[gtfs.RouteItinerary], i2: list[gtfs.RouteItinerary]
-            ) -> list[gtfs.RouteItinerary]:
-        result: list[gtfs.RouteItinerary] = []
+            self, i1: list[gtfs.Itinerary], i2: list[gtfs.Itinerary]
+            ) -> list[gtfs.Itinerary]:
+        result: list[gtfs.Itinerary] = []
         di1 = {i.itinerary_id: i for i in i1}
         di2 = {i.itinerary_id: i for i in i2}
         for k in di1:
             if k not in di2:
-                result.append(gtfs.RouteItinerary(itinerary_id=k))
+                result.append(gtfs.Itinerary(itinerary_id=k))
         for k, v in di2.items():
             old = di1.get(k)
+            # TODO: headsigns as a list
             if old:
                 old.headsign = self.from_old(old.headsign)
                 for i in range(len(old.stop_headsigns)):
@@ -145,6 +142,9 @@ class DeltaMaker:
                 for i in range(len(v.stop_headsigns)):
                     v.stop_headsigns[i] = self.add_string(v.stop_headsigns[i])
                 result.append(v)
+            # TODO: those two went to itineraries
+            # pickup_types=[] if old.pickup_types == v.pickup_types else v.pickup_types,
+            # dropoff_types=[] if old.dropoff_types == v.dropoff_types else v.dropoff_types,
         return result
 
     def routes(self, r1: list[gtfs.Route], r2: list[gtfs.Route]) -> list[gtfs.Route]:
@@ -158,48 +158,26 @@ class DeltaMaker:
             if k not in rd1:
                 for i in range(len(v.long_name)):
                     v.long_name[i] = self.add_string(v.long_name[i])
-                del v.itineraries[:]
-                v.itineraries.extend(self.itineraries([], v.itineraries))
                 result.append(v)
             else:
                 old = rd1[k]
                 for i in range(len(old.long_name)):
                     old.long_name[i] = self.from_old(old.long_name[i])
-                i1 = list(sorted(old.itineraries, key=lambda it: it.itinerary_id))
-                i2 = list(sorted(v.itineraries, key=lambda it: it.itinerary_id))
 
                 if old != v:
-                    # Check if anything besides itineraries has changed.
-                    ni1 = gtfs.Route()
-                    ni1.CopyFrom(old)
-                    del ni1.itineraries[:]
-                    ni2 = gtfs.Route()
-                    ni2.CopyFrom(v)
-                    del ni2.itineraries[:]
-
-                    if ni1 == ni2:
-                        if i1 == i2:
-                            # Just unsorted itineraries.
-                            continue
-                        r = gtfs.Route(route_id=k)
-                    else:
-                        r = gtfs.Route(
-                            route_id=k,
-                            agency_id=0 if old.agency_id != v.agency_id else v.agency_id,
-                            short_name='' if old.short_name != v.short_name else v.short_name,
-                            long_name=[] if old.long_name == v.long_name else [
-                                self.add_string(s) for s in v.long_name],
-                            desc='' if old.desc != v.desc else v.desc,
-                            type=v.type,
-                            color=v.color,
-                            text_color=v.text_color,
-                            continuous_pickup=v.continuous_pickup,
-                            continuous_dropoff=v.continuous_dropoff,
-                        )
-
-                    # Now update itineraries.
-                    r.itineraries.extend(self.itineraries(old.itineraries, v.itineraries))
-                    result.append(r)
+                    result.append(gtfs.Route(
+                        route_id=k,
+                        agency_id=0 if old.agency_id != v.agency_id else v.agency_id,
+                        short_name='' if old.short_name != v.short_name else v.short_name,
+                        long_name=[] if old.long_name == v.long_name else [
+                            self.add_string(s) for s in v.long_name],
+                        desc='' if old.desc != v.desc else v.desc,
+                        type=v.type,
+                        color=v.color,
+                        text_color=v.text_color,
+                        continuous_pickup=v.continuous_pickup,
+                        continuous_dropoff=v.continuous_dropoff,
+                    ))
 
         return result
 
@@ -226,8 +204,6 @@ class DeltaMaker:
                     approximate=v.approximate,
                     departures=[] if not arr_dep_changed else v.departures,
                     arrivals=[] if not arr_dep_changed else v.arrivals,
-                    pickup_types=[] if old.pickup_types == v.pickup_types else v.pickup_types,
-                    dropoff_types=[] if old.dropoff_types == v.dropoff_types else v.dropoff_types,
                     start_time=0 if old.start_time == v.start_time else v.start_time,
                     end_time=0 if old.end_time == v.end_time else v.end_time,
                     interval=0 if old.interval == v.interval else v.interval,
@@ -265,18 +241,6 @@ class DeltaMaker:
     def delta_dict(self, d1: dict[int, str], d2: dict[int, str]) -> dict[int, str]:
         return {k: v for k, v in d2.items() if k not in d1 or d1[k] != v}
 
-    def fare_links(self, f1: FareLinks, f2: FareLinks) -> FareLinks:
-        def delta_dict_int(d1: dict[int, int], d2: dict[int, int]) -> dict[int, int]:
-            ch = {k: v for k, v in d2.items() if k not in d1 or d1[k] != v}
-            ch.update({k: 0 for k in d1 if k not in d2})
-            return ch
-
-        fl = FareLinks()
-        fl.stop_areas = delta_dict_int(f1.stop_areas, f2.stop_areas)
-        fl.stop_zones = delta_dict_int(f1.stop_zones, f2.stop_zones)
-        fl.route_networks = delta_dict_int(f1.route_networks, f2.route_networks)
-        return fl
-
 
 def delta():
     parser = argparse.ArgumentParser(
@@ -306,13 +270,13 @@ def delta():
 
     dm = DeltaMaker(feed1.strings, feed2.strings, delta.strings)
     delta.agencies = dm.agencies(feed1.agencies, feed2.agencies)
-    delta.calendar = dm.calendar(feed1.calendar, feed2.calendar)
+    delta.services = dm.services(feed1.services, feed2.services)
     delta.shapes = dm.shapes(feed1.shapes, feed2.shapes)
     delta.stops = dm.stops(feed1.stops, feed2.stops)
     delta.routes = dm.routes(feed1.routes, feed2.routes)
+    delta.itineraries = dm.itineraries(feed1.itineraries, feed2.itineraries)
     delta.trips = dm.trips(feed1.trips, feed2.trips)
     delta.transfers = dm.transfers(feed1.transfers, feed2.transfers)
     delta.networks = dm.delta_dict(feed1.networks, feed2.networks)
     delta.areas = dm.delta_dict(feed1.areas, feed2.areas)
-    delta.fare_links = dm.fare_links(feed1.fare_links, feed2.fare_links)
     delta.write(options.output)

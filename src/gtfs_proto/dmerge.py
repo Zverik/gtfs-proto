@@ -1,7 +1,7 @@
 import argparse
 import sys
 from . import (
-    gtfs, GtfsDelta, FareLinks, StringCache,
+    gtfs, GtfsDelta, StringCache,
     parse_calendar, build_calendar, int_to_date,
 )
 
@@ -40,7 +40,7 @@ class DeltaMerger:
                 )
         return list(ad1.values())
 
-    def calendar(self, c1: gtfs.Calendar, c2: gtfs.Calendar) -> gtfs.Calendar:
+    def services(self, c1: gtfs.Services, c2: gtfs.Services) -> gtfs.Services:
         cd1 = {c.service_id: c for c in parse_calendar(c1)}
         for c in parse_calendar(c2):
             cd1[c.service_id] = c
@@ -111,6 +111,10 @@ class DeltaMerger:
                 rd1[r.route_id].itineraries.extend(it1.values())
         return list(rd1.values())
 
+    def itineraries(self, i1: list[gtfs.Itinerary], i2: list[gtfs.Itinerary]
+                    ) -> list[gtfs.Itinerary]:
+        return i1  # TODO
+
     def trips(self, t1: list[gtfs.Trip], t2: list[gtfs.Trip]) -> list[gtfs.Trip]:
         td1 = {t.trip_id: t for t in t1}
         for t in t2:
@@ -153,11 +157,6 @@ class DeltaMerger:
             td1[transfer_key(t)] = t
         return list(td1.values())
 
-    def fare_links(self, f1: FareLinks, f2: FareLinks):
-        f1.stop_areas.update(f2.stop_areas)
-        f1.stop_zones.update(f2.stop_zones)
-        f1.route_networks.update(f2.route_networks)
-
 
 def delta_merge():
     parser = argparse.ArgumentParser(
@@ -196,13 +195,13 @@ def delta_merge():
 
     dm = DeltaMerger(delta.strings, second.strings)
     delta.agencies = dm.agencies(delta.agencies, second.agencies)
-    delta.calendar = dm.calendar(delta.calendar, second.calendar)
+    delta.services = dm.services(delta.services, second.services)
     delta.shapes = dm.shapes(delta.shapes, second.shapes)
     delta.stops = dm.stops(delta.stops, second.stops)
     delta.routes = dm.routes(delta.routes, second.routes)
+    delta.itineraries = dm.itineraries(delta.itineraries, second.itineraries)
     delta.trips = dm.trips(delta.trips, second.trips)
     delta.transfers = dm.transfers(delta.transfers, second.transfers)
     delta.networks.update(second.networks)
     delta.areas.update(second.areas)
-    dm.fare_links(delta.fare_links, second.fare_links)
     delta.write(options.output)
