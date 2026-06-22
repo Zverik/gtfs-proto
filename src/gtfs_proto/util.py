@@ -113,10 +113,17 @@ def build_calendar(services: list[CalendarService],
             end_date = base_date + timedelta(days=1)
         else:
             end_date = s.end_date
+
+        if not s.start_date:
+            start_date = base_date
+        elif s.start_date < base_date:
+            start_date = base_date + timedelta(days=1)
+        else:
+            start_date = s.start_date
+
         c.services.append(gtfs.Service(
             service_id=s.service_id,
-            start_date=(0 if not s.start_date or s.start_date < base_date
-                        else (s.start_date - base_date).days),
+            start_date=(start_date - base_date).days,
             end_date=(end_date - base_date).days,
             weekdays=sum(1 << i for i in range(7) if s.weekdays[i]),
             added_days=pack_dates(s.added_days, base_date),

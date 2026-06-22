@@ -149,8 +149,8 @@ def print_calendar(c: gtfs.Services):
             'start_date': None if not s.start_date else s.start_date,
             'end_date': None if not s.end_date else s.end_date,
             'weekdays': f'{s.weekdays:#b}',
-            'added_days': None if not s.added_days else s.added_days,
-            'removed_days': None if not s.removed_days else s.removed_days,
+            'added_days': None if not s.added_days else list(s.added_days),
+            'removed_days': None if not s.removed_days else list(s.removed_days),
         })
 
 

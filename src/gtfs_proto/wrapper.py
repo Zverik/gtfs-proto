@@ -32,7 +32,7 @@ class GtfsBlocks:
     def populate_header(self, header: gtfs.GtfsHeader, compressed: bool = False):
         del header.blocks[:]
         for b in gtfs.Block.values():
-            if 0 < b and b < gtfs.B_ZONES:
+            if 0 < b and b < gtfs.B_END:
                 header.blocks.append(len(self.get(b, compressed)))
 
     @property

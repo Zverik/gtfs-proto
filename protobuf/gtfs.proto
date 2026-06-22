@@ -54,6 +54,8 @@ message GtfsHeader {
   bool compressed = 4;
 
   // Array in order and matching the Blocks enum. Sizes of blocks, not offsets.
+  // Only refers entries between 1 (inclusive) and B_END (not inclusive).
+  // May be cut off earlier, meaning the rest of the block are empty.
   repeated uint32 blocks = 5;
 }
 
@@ -86,8 +88,8 @@ message Services {
 
 message Service {
   uint32 service_id = 1;
-  uint32 start_date = 2; // offset from base_date, non-zero
-  uint32 end_date = 3; // offset from base_date
+  uint32 start_date = 2; // offset from base_date, non-zero if present
+  uint32 end_date = 3; // offset from base_date, non-zero if present
   uint32 weekdays = 4; // binary: 1 for Monday, 2 for Tuesday, 4 for Wednesday etc.
 
   // These fields come from calendar_days.txt.
@@ -95,6 +97,8 @@ message Service {
   // is stored as an offset to previous.
   repeated uint32 added_days = 5;
   repeated uint32 removed_days = 6;
+
+  bool delete = 7;
 }
 
 message Shapes {
@@ -318,6 +322,7 @@ message IdReference {
 }
 
 // These go in the file order.
+// Sorted so that you don't need random access, but can process file top to bottom.
 enum Block {
   B_HEADER = 0;  // GtfsHeader, never actually appears
   B_IDS = 1;     // IdStore → IdReference
@@ -338,7 +343,10 @@ enum Block {
   // Fare-related tables.
   B_NETWORKS = 11; // Networks
   B_AREAS = 12;    // Areas
-  B_ZONES = 13;    // no related message, zones are only zone_ids
+
+  // No related blocks for values below.
+  B_END = 49;
+  B_ZONES = 50;    // zones are only zone_ids
 }
 
 
@@ -361,7 +369,7 @@ message GtfsDeltaHeader {
 // Agencies: zero element for same, non-zero for change or addition.
 
 // Services: base_date is specific to the feed and applied only to new and changed records.
-// Service: start_date is zero for deleted service; new and changed specify every field.
+// Service: see "delete" field for deletions; new and changed specify every field.
 
 // Shapes: Shape with just an id to delete, with locations - change or add.
 

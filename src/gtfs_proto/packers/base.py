@@ -53,7 +53,7 @@ class BasePacker(ABC):
 
     def sequence_reader(self, fileobj: TextIO, id_column: str,
                         seq_column: str, ids_block: int | None = None,
-                        max_overlapping: int = 2,
+                        max_overlapping: int = 20,
                         ) -> Generator[tuple[list[dict], int, str], None, None]:
         cur_ids: list[int] = []
         cur_lists: list[list[tuple[int, str, dict]]] = []
