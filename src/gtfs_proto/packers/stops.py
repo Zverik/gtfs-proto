@@ -24,8 +24,6 @@ class StopsPacker(BasePacker):
 
     def prepare(self, fileobj: TextIO, areas: dict[str, list[int]]) -> list[gtfs.Stop]:
         stops: list[gtfs.Stop] = []
-        last_lat: float = 0
-        last_lon: float = 0
         for row, stop_id, orig_stop_id in self.table_reader(fileobj, 'stop_id'):
             stop = gtfs.Stop(stop_id=stop_id)
             if row.get('stop_code'):
@@ -36,11 +34,8 @@ class StopsPacker(BasePacker):
                 stop.desc = row['stop_desc']
             if row.get('stop_lat'):
                 # Actually we don't know what happens when it's missing.
-                new_lat = round(float(row['stop_lat']) * 1e5)
-                new_lon = round(float(row['stop_lon']) * 1e5)
-                stop.lat = new_lat - last_lat
-                stop.lon = new_lon - last_lon
-                last_lat, last_lon = new_lat, new_lon
+                stop.lat = round(float(row['stop_lat']) * 1e5)
+                stop.lon = round(float(row['stop_lon']) * 1e5)
             if row.get('zone_id'):
                 stop.zone = self.id_store[gtfs.B_ZONES].add(row['zone_id'])
             if orig_stop_id in areas:

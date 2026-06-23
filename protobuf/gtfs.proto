@@ -377,7 +377,7 @@ message GtfsDeltaHeader {
 // empty fields stay the same. Fields "wheelchair" and "type" are always set for changed.
 // New ids should continue the sequence.
 
-// Routes: list stops, but for changed, all fields except names and desc are always filled.
+// Routes: like stops, but for changed, all fields except names and desc are always filled.
 // Itineraries: either created or deleted, there's no change option.
 
 // Trips: like stops: specify just an id to delete, some information when changed,
