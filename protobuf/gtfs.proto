@@ -378,7 +378,7 @@ message GtfsDeltaHeader {
 // New ids should continue the sequence.
 
 // Routes: like stops, but for changed, all fields except names and desc are always filled.
-// Itineraries: either created or deleted, there's no change option.
+// Itineraries: deleting if no route_id, skip a repeated field if the same as old.
 
 // Trips: like stops: specify just an id to delete, some information when changed,
 // all info when adding a new one. New ids should continue the sequence.

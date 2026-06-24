@@ -29,6 +29,7 @@ class Trip:
         self.dropoff_types = [s.dropoff for s in stops]
 
         # Generate stops key.
+        # TODO: guard against md5 clashes - we cannot afford to lose stops!
         m = md5(usedforsecurity=False)
         m.update(row['route_id'].encode())
         for s in self.stops:
