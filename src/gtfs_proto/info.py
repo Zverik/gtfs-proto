@@ -124,6 +124,7 @@ def print_id(ids: gtfs.IdReference):
     print_skip_empty({
         'block': block_names.get(ids.block, str(ids.block)),
         'ids': {i: s for i, s in enumerate(ids.ids) if i},
+        'delta_skip': ids.delta_skip,
     })
 
 
@@ -310,6 +311,7 @@ def info():
                 print_skip_empty({
                     'block': block_names.get(b, str(b)),
                     'ids': {i: s for s, i in ids.ids.items()},
+                    'delta_skip': ids.delta_skip or None,
                 })
         elif block == gtfs.B_AGENCY:
             for a in feed.agencies:

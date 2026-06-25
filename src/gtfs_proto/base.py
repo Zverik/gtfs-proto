@@ -62,6 +62,13 @@ class IdReference:
         self.ids = {}
         self.last_id = 0
 
+    def copy(self):
+        c = IdReference()
+        c.ids = self.ids.copy()
+        c.last_id = self.last_id
+        c.delta_skip = self.delta_skip
+        return c
+
     def add(self, k: str) -> int:
         if k not in self.ids:
             self.last_id += 1

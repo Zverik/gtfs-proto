@@ -56,12 +56,15 @@ class TripsPacker(BasePacker):
             cur_times: list[StopTime] = []
             for row in rows:
                 arrival = self.parse_time(row['arrival_time']) or 0
-                arrival = round(arrival / 5)
                 departure = self.parse_time(row['departure_time']) or 0
-                if departure:
-                    departure = round(departure / 5)
-                elif arrival:
+
+                if not arrival and departure:
+                    arrival = departure
+                elif not departure and arrival:
                     departure = arrival
+                arrival = round(arrival / 5)
+                departure = round(departure / 5)
+
                 cur_times.append(StopTime(
                     seq_id=int(row['stop_sequence']),
                     arrival=arrival,
@@ -75,6 +78,7 @@ class TripsPacker(BasePacker):
         if trip.arrivals or trip.departures:
             raise ValueError(f'Trip was already filled: {self.ids.original[trip.trip_id]}')
         arrivals: list[int] = []
+        last_non_zero = 0
         for i in range(len(times)):
             a = times[i].arrival
             d = times[i].departure
@@ -82,7 +86,8 @@ class TripsPacker(BasePacker):
             if i == 0 or d == 0:
                 trip.departures.append(d)
             else:
-                trip.departures.append(d - times[i-1].departure)
+                trip.departures.append(d - last_non_zero + 1)
+                last_non_zero = d
             # d - a >= 0 because if d == 0, we set it to arrival time in from_stop_times().
             arrivals.append(0 if not a else d - a)
         trip.arrivals.extend(self.cut_empty(arrivals, 0))

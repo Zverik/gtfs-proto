@@ -261,11 +261,13 @@ message Trip {
 
   // Granularity is 5 seconds.
   // First number is (hours * 720) + (minutes * 12) + (seconds / 5), rounded down.
-  // After that, differences from previous time.
-  // Mind the accumulated rounding error!
-  // Zero (0) for a departure means an absent value.
+  // After that, differences from previous time + 1.
+  // Mind the accumulated rounding error and the +1!
+  // Zero (0) for a departure means an absent value (when arrival is non-zero, we copy from there).
   repeated uint32 departures = 8;
-  // Counted from same departures (backwards), truncated to the last non-zero value.
+
+  // Counted from same departures (backwards), truncated to the last non-zero value. Granularity is 5 sec.
+  // When _both_ d. and a. are undefined, we have 0 in both, otherwise we use the value in departures.
   repeated uint32 arrivals = 9;
 
   // For frequency-based trips, those three are present.

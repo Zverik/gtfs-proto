@@ -253,10 +253,18 @@ class DeltaMaker:
         return {k: v for k, v in d2.items() if k not in d1 or d1[k] != v}
 
 
-def renumber_itineraries(old: IdReference, v: IdReference) -> dict[int, int]:
-    # TODO: this is all incorrect, because itineraries are added in the random order.
+def renumber_itineraries(old: IdReference, feed: GtfsProto) -> dict[int, int]:
+    # Simple itinerary update won't work, because itineraries are added in the random order.
     # Instead, itineraries need to be matched by original string ids.
-    return {i: i for k, i in v.ids.items()}  # TODO
+    new_ids = feed.id_store[gtfs.B_ITINERARIES]
+    renumbered = old.copy()
+    id_mapping: dict[int, int] = {}
+    for orig_id, new_idx in new_ids.ids.items():
+        id_mapping[new_idx] = renumbered.add(orig_id)
+    feed.id_store[gtfs.B_ITINERARIES] = renumbered
+    # TODO: waaaait. Isn't this the case for everything else?
+    # TODO: How are we sure other ids stay fixed?
+    return id_mapping
 
 
 def delta():
@@ -280,8 +288,7 @@ def delta():
     delta.header.date = feed2.header.date
     delta.header.compressed = feed2.header.compressed
 
-    itinerary_map = renumber_itineraries(
-        feed1.id_store[gtfs.B_ITINERARIES], feed2.id_store[gtfs.B_ITINERARIES])
+    itinerary_map = renumber_itineraries(feed1.id_store[gtfs.B_ITINERARIES], feed2)
     delta.id_store = feed2.id_store
     for k, v in feed1.id_store.items():
         if k in feed2.id_store:

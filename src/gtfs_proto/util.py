@@ -102,7 +102,15 @@ def build_calendar(services: list[CalendarService],
         return result
 
     if not base_date:
-        base_date = date.today() - timedelta(days=2)
+        base_date = date.today()
+        # To avoid issues, we're finding the earliest - 2.
+        for s in services:
+            if s.start_date and s.start_date < base_date:
+                base_date = s.start_date
+            for d in s.added_days + s.removed_days:
+                if d < base_date:
+                    base_date = d
+        base_date -= timedelta(days=2)
 
     c = gtfs.Services(base_date=to_int(base_date))
     for s in services:
@@ -133,10 +141,12 @@ def build_calendar(services: list[CalendarService],
 
 
 def parse_shape(shape: gtfs.Shape) -> list[tuple[float, float]]:
+    last_coord = (0, 0)
     coords: list[tuple[float, float]] = []
     for i in range(len(shape.longitudes)):
-        c = (shape.longitudes[i], shape.latitudes[i])
+        c = (shape.longitudes[i] + last_coord[0], shape.latitudes[i] + last_coord[1])
         coords.append((c[0] / SHAPE_SCALE, c[1] / SHAPE_SCALE))
+        last_coord = c
     return coords
 
 
@@ -144,7 +154,10 @@ def build_shape(shape_id: int, coords: list[tuple[float, float]]) -> gtfs.Shape:
     if len(coords) < 2:
         raise Exception(f'Got {len(coords)} coords for shape {shape_id}')
     shape = gtfs.Shape(shape_id=shape_id)
+    last_coord = (0, 0)
     for c in coords:
-        shape.longitudes.append(round(c[0] * SHAPE_SCALE))
-        shape.latitudes.append(round(c[1] * SHAPE_SCALE))
+        new_coord = (round(c[0] * SHAPE_SCALE), round(c[1] * SHAPE_SCALE))
+        shape.longitudes.append(new_coord[0] - last_coord[0])
+        shape.latitudes.append(new_coord[1] - last_coord[1])
+        last_coord = new_coord
     return shape
