@@ -28,11 +28,17 @@ class DeltaMaker:
             return self.add_string(new_str)
         return None
 
-    def agencies(self, a1: list[gtfs.Agency], a2: list[gtfs.Agency]) -> list[gtfs.Agency]:
+    def id_2_to_1(self, entity_id: int, block: int, id1: dict[int, IdReference],
+                  id2: dict[int, IdReference]) -> int:
+        return id1[block].add(id2[block].original[entity_id])
+
+    def agencies(self, a1: list[gtfs.Agency], a2: list[gtfs.Agency],
+                 id1: dict[int, IdReference], id2: dict[int, IdReference]) -> list[gtfs.Agency]:
         ad1 = {a.agency_id: a for a in a1}
-        ad2 = {a.agency_id: a for a in a2}
+        ad2 = {self.id_2_to_1(a.agency_id, gtfs.B_AGENCY, id1, id2): a for a in a2}
         result: list[gtfs.Agency] = []
         for k, v in ad2.items():
+            v.agency_id = k
             if k not in ad1:
                 # new agency
                 result.append(v)
@@ -51,18 +57,21 @@ class DeltaMaker:
                     ))
         return result
 
-    def services(self, c1: gtfs.Services, c2: gtfs.Services) -> gtfs.Services:
+    def services(self, c1: gtfs.Services, c2: gtfs.Services, id1: dict[int, IdReference],
+                 id2: dict[int, IdReference]) -> gtfs.Services:
         def cut(dates: list[dt.date], base_date: dt.date) -> list[dt.date]:
             return [d for d in dates if d > base_date]
 
         cd1 = {c.service_id: c for c in parse_calendar(c1)}
-        cd2 = {c.service_id: c for c in parse_calendar(c2)}
+        cd2 = {self.id_2_to_1(c.service_id, gtfs.B_SERVICES, id1, id2): c
+               for c in parse_calendar(c2)}
         result: list[CalendarService] = []
 
         for k in cd1:
             if k not in cd2:
                 result.append(CalendarService(service_id=k))
         for k, v in cd2.items():
+            v.service_id = k
             if k not in cd1:
                 result.append(v)
             else:
@@ -72,14 +81,16 @@ class DeltaMaker:
 
         return build_calendar(result, int_to_date(c2.base_date))
 
-    def shapes(self, s1: list[gtfs.Shape], s2: list[gtfs.Shape]) -> list[gtfs.Shape]:
+    def shapes(self, s1: list[gtfs.Shape], s2: list[gtfs.Shape], id1: dict[int, IdReference],
+               id2: dict[int, IdReference]) -> list[gtfs.Shape]:
         sd1 = {s.shape_id: s for s in s1}
-        sd2 = {s.shape_id: s for s in s2}
+        sd2 = {self.id_2_to_1(s.shape_id, gtfs.B_SHAPES, id1, id2): s for s in s2}
         result: list[gtfs.Shape] = []
         for k in sd1:
             if k not in sd2:
                 result.append(gtfs.Shape(shape_id=k))
         for k, v in sd2.items():
+            v.shape_id = k
             if k not in sd1:
                 result.append(v)
             else:
@@ -89,14 +100,16 @@ class DeltaMaker:
                     result.append(v)
         return result
 
-    def stops(self, s1: list[gtfs.Stop], s2: list[gtfs.Stop]) -> list[gtfs.Stop]:
+    def stops(self, s1: list[gtfs.Stop], s2: list[gtfs.Stop], id1: dict[int, IdReference],
+              id2: dict[int, IdReference]) -> list[gtfs.Stop]:
         sd1 = {s.stop_id: s for s in s1}
-        sd2 = {s.stop_id: s for s in s2}
+        sd2 = {self.id_2_to_1(s.stop_id, gtfs.B_STOPS, id1, id2): s for s in s2}
         result: list[gtfs.Stop] = []
         for k in sd1:
             if k not in sd2:
                 result.append(gtfs.Stop(stop_id=k, delete=True))
         for k, v in sd2.items():
+            v.stop_id = k
             if k not in sd1:
                 v.name = self.add_string(v.name)
                 result.append(v)
@@ -121,49 +134,16 @@ class DeltaMaker:
                     ))
         return result
 
-    def itineraries(
-            self, i1: list[gtfs.Itinerary], i2: list[gtfs.Itinerary],
-            itinerary_map: dict[int, int]) -> list[gtfs.Itinerary]:
-        result: list[gtfs.Itinerary] = []
-        di1 = {i.itinerary_id: i for i in i1}
-        di2 = {itinerary_map[i.itinerary_id]: i for i in i2}
-        for k in di1:
-            if k not in di2:
-                result.append(gtfs.Itinerary(itinerary_id=k))
-        for k, v in di2.items():
-            if k not in di1:
-                for i in range(len(v.headsigns)):
-                    v.headsigns[i] = self.add_string(v.headsigns[i])
-                result.append(v)
-            else:
-                old = di1[k]
-                for i in range(len(old.headsigns)):
-                    old.headsigns[i] = self.from_old(old.headsigns[i])
-
-                if old != v:
-                    result.append(gtfs.Itinerary(
-                        itinerary_id=k,
-                        route_id=v.route_id,
-                        stops=[] if old.stops == v.stops else v.stops,
-                        opposite_direction=v.opposite_direction,
-                        shape_id=v.shape_id,
-                        headsigns=[] if old.headsigns == v.headsigns else [
-                            self.add_string(s) for s in v.headsigns],
-                        pickup_types=[] if old.pickup_types == v.pickup_types
-                        else v.pickup_types,
-                        dropoff_types=[] if old.dropoff_types == v.dropoff_types
-                        else v.dropoff_types,
-                    ))
-        return result
-
-    def routes(self, r1: list[gtfs.Route], r2: list[gtfs.Route]) -> list[gtfs.Route]:
+    def routes(self, r1: list[gtfs.Route], r2: list[gtfs.Route], id1: dict[int, IdReference],
+               id2: dict[int, IdReference]) -> list[gtfs.Route]:
         rd1 = {r.route_id: r for r in r1}
-        rd2 = {r.route_id: r for r in r2}
+        rd2 = {self.id_2_to_1(r.route_id, gtfs.B_ROUTES, id1, id2): r for r in r2}
         result: list[gtfs.Route] = []
         for k in rd1:
             if k not in rd2:
                 result.append(gtfs.Route(route_id=k, delete=True))
         for k, v in rd2.items():
+            v.route_id = k
             if k not in rd1:
                 for i in range(len(v.long_name)):
                     v.long_name[i] = self.add_string(v.long_name[i])
@@ -191,15 +171,55 @@ class DeltaMaker:
 
         return result
 
+    def itineraries(
+            self, i1: list[gtfs.Itinerary], i2: list[gtfs.Itinerary],
+            id1: dict[int, IdReference], id2: dict[int, IdReference]) -> list[gtfs.Itinerary]:
+        result: list[gtfs.Itinerary] = []
+        di1 = {i.itinerary_id: i for i in i1}
+        di2 = {self.id_2_to_1(i.itinerary_id, gtfs.B_ITINERARIES, id1, id2): i for i in i2}
+        for k in di1:
+            if k not in di2:
+                result.append(gtfs.Itinerary(itinerary_id=k))
+        for k, v in di2.items():
+            v.itinerary_id = k
+            v.route_id = self.id_2_to_1(v.route_id, gtfs.B_ROUTES, id1, id2)
+            if k not in di1:
+                for i in range(len(v.headsigns)):
+                    v.headsigns[i] = self.add_string(v.headsigns[i])
+                result.append(v)
+            else:
+                old = di1[k]
+                for i in range(len(old.headsigns)):
+                    old.headsigns[i] = self.from_old(old.headsigns[i])
+
+                if old != v:
+                    result.append(gtfs.Itinerary(
+                        itinerary_id=k,
+                        route_id=v.route_id,
+                        stops=[] if old.stops == v.stops else v.stops,
+                        opposite_direction=v.opposite_direction,
+                        shape_id=v.shape_id,
+                        headsigns=[] if old.headsigns == v.headsigns else [
+                            self.add_string(s) for s in v.headsigns],
+                        pickup_types=[] if old.pickup_types == v.pickup_types
+                        else v.pickup_types,
+                        dropoff_types=[] if old.dropoff_types == v.dropoff_types
+                        else v.dropoff_types,
+                    ))
+        return result
+
     def trips(self, t1: list[gtfs.Trip], t2: list[gtfs.Trip],
-              itinerary_map: dict[int, int]) -> list[gtfs.Trip]:
+              id1: dict[int, IdReference], id2: dict[int, IdReference]) -> list[gtfs.Trip]:
         td1 = {t.trip_id: t for t in t1}
-        td2 = {t.trip_id: t for t in t2}
+        td2 = {self.id_2_to_1(t.trip_id, gtfs.B_TRIPS, id1, id2): t for t in t2}
         result: list[gtfs.Trip] = []
         for k in td1:
             if k not in td2:
                 result.append(gtfs.Trip(trip_id=k))
         for k, v in td2.items():
+            v.trip_id = k
+            v.itinerary_id = self.id_2_to_1(v.itinerary_id, gtfs.B_ITINERARIES, id1, id2)
+            v.service_id = self.id_2_to_1(v.service_id, gtfs.B_SERVICES, id1, id2)
             if k not in td1:
                 result.append(v)
             elif td1[k] != v:
@@ -221,8 +241,9 @@ class DeltaMaker:
                 ))
         return result
 
-    def transfers(self, t1: list[gtfs.Transfer],
-                  t2: list[gtfs.Transfer]) -> list[gtfs.Transfer]:
+    def transfers(self, t1: list[gtfs.Transfer], t2: list[gtfs.Transfer],
+                  id1: dict[int, IdReference], id2: dict[int, IdReference]
+                  ) -> list[gtfs.Transfer]:
         def transfer_key(t: gtfs.Transfer):
             return (
                 t.from_stop, t.to_stop,
@@ -233,6 +254,7 @@ class DeltaMaker:
         result: list[gtfs.Transfer] = []
         td1 = {transfer_key(t): t for t in t1}
         td2 = {transfer_key(t): t for t in t2}
+        # TODO: all ids need remapping
         for k, v in td1.items():
             if k not in td2:
                 result.append(gtfs.Transfer(
@@ -249,22 +271,10 @@ class DeltaMaker:
                 result.append(v)
         return result
 
-    def delta_dict(self, d1: dict[int, str], d2: dict[int, str]) -> dict[int, str]:
+    def delta_dict(self, d1: dict[int, str], d2: dict[int, str], id1: dict[int, IdReference],
+                   id2: dict[int, IdReference]) -> dict[int, str]:
+        # TODO (I'm too tired rn)
         return {k: v for k, v in d2.items() if k not in d1 or d1[k] != v}
-
-
-def renumber_itineraries(old: IdReference, feed: GtfsProto) -> dict[int, int]:
-    # Simple itinerary update won't work, because itineraries are added in the random order.
-    # Instead, itineraries need to be matched by original string ids.
-    new_ids = feed.id_store[gtfs.B_ITINERARIES]
-    renumbered = old.copy()
-    id_mapping: dict[int, int] = {}
-    for orig_id, new_idx in new_ids.ids.items():
-        id_mapping[new_idx] = renumbered.add(orig_id)
-    feed.id_store[gtfs.B_ITINERARIES] = renumbered
-    # TODO: waaaait. Isn't this the case for everything else?
-    # TODO: How are we sure other ids stay fixed?
-    return id_mapping
 
 
 def delta():
@@ -288,21 +298,21 @@ def delta():
     delta.header.date = feed2.header.date
     delta.header.compressed = feed2.header.compressed
 
-    itinerary_map = renumber_itineraries(feed1.id_store[gtfs.B_ITINERARIES], feed2)
-    delta.id_store = feed2.id_store
-    for k, v in feed1.id_store.items():
-        if k in feed2.id_store:
-            feed2.id_store[k].delta_skip = v.last_id
+    delta.id_store = feed1.id_store
+    for k, v in delta.id_store.items():
+        v.delta_skip = v.last_id + 1
 
     dm = DeltaMaker(feed1.strings, feed2.strings, delta.strings)
-    delta.agencies = dm.agencies(feed1.agencies, feed2.agencies)
-    delta.services = dm.services(feed1.services, feed2.services)
-    delta.shapes = dm.shapes(feed1.shapes, feed2.shapes)
-    delta.stops = dm.stops(feed1.stops, feed2.stops)
-    delta.routes = dm.routes(feed1.routes, feed2.routes)
-    delta.itineraries = dm.itineraries(feed1.itineraries, feed2.itineraries, itinerary_map)
-    delta.trips = dm.trips(feed1.trips, feed2.trips, itinerary_map)
-    delta.transfers = dm.transfers(feed1.transfers, feed2.transfers)
-    delta.networks = dm.delta_dict(feed1.networks, feed2.networks)
-    delta.areas = dm.delta_dict(feed1.areas, feed2.areas)
+    delta.agencies = dm.agencies(feed1.agencies, feed2.agencies, delta.id_store, feed2.id_store)
+    delta.services = dm.services(feed1.services, feed2.services, delta.id_store, feed2.id_store)
+    delta.shapes = dm.shapes(feed1.shapes, feed2.shapes, delta.id_store, feed2.id_store)
+    delta.stops = dm.stops(feed1.stops, feed2.stops, delta.id_store, feed2.id_store)
+    delta.routes = dm.routes(feed1.routes, feed2.routes, delta.id_store, feed2.id_store)
+    delta.itineraries = dm.itineraries(
+        feed1.itineraries, feed2.itineraries, delta.id_store, feed2.id_store)
+    delta.trips = dm.trips(feed1.trips, feed2.trips, delta.id_store, feed2.id_store)
+    delta.transfers = dm.transfers(
+        feed1.transfers, feed2.transfers, delta.id_store, feed2.id_store)
+    delta.networks = dm.delta_dict(feed1.networks, feed2.networks, delta.id_store, feed2.id_store)
+    delta.areas = dm.delta_dict(feed1.areas, feed2.areas, delta.id_store, feed2.id_store)
     delta.write(options.output)
