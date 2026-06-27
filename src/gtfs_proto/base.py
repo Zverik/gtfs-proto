@@ -43,7 +43,8 @@ class StringCache:
         return None
 
     def store(self) -> bytes:
-        return gtfs.StringTable(strings=self.strings).SerializeToString()
+        return gtfs.StringTable(
+            strings=[] if len(self.strings) == 1 else self.strings).SerializeToString()
 
 
 class IdReference:

@@ -101,6 +101,9 @@ def build_calendar(services: list[CalendarService],
                 prev = d
         return result
 
+    if not services:
+        return gtfs.Services()
+
     if not base_date:
         base_date = date.today()
         # To avoid issues, we're finding the earliest - 2.

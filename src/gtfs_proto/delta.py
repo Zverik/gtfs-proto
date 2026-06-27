@@ -292,6 +292,10 @@ def delta():
     feed1 = GtfsProto(options.old)
     feed2 = GtfsProto(options.new)
 
+    if feed2.header.version <= feed1.header.version:
+        raise ValueError(f'New version {feed2.header.version} is lower or equal '
+                         f'to the old {feed1.header.version}')
+
     delta = GtfsDelta()
     delta.header.old_version = feed1.header.version
     delta.header.version = feed2.header.version
