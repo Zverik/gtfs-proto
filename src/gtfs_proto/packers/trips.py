@@ -85,6 +85,8 @@ class TripsPacker(BasePacker):
             # Departures is the main list, arrivals is the auxillary.
             if i == 0 or d == 0:
                 trip.departures.append(d)
+                if i == 0:
+                    last_non_zero = d
             else:
                 trip.departures.append(d - last_non_zero + 1)
                 last_non_zero = d

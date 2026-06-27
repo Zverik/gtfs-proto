@@ -110,8 +110,8 @@ class ItineraryPacker(BasePacker):
                 # The stop should be already in the table.
                 stop_id=self.id_store[gtfs.B_STOPS].ids[row['stop_id']],
                 headsign=self.strings.add(row.get('stop_headsign')),
-                pickup=self.parse_pickup_dropoff(row.get('continuous_pickup')),
-                dropoff=self.parse_pickup_dropoff(row.get('continuous_drop_off')),
+                pickup=self.parse_pickup_dropoff(row.get('pickup_type')),
+                dropoff=self.parse_pickup_dropoff(row.get('drop_off_type')),
             ) for row in rows]
         return trip_stops
 
