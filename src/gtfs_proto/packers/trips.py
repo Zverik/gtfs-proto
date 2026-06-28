@@ -109,7 +109,7 @@ class TripsPacker(BasePacker):
             trip.start_time = int(start / 10)
             trip.end_time = int((end + 9) / 10)
             trip.interval = int(row['headway_secs'])
-            trip.approximate = row.get('exact_times') == '1'
+            trip.approximate = row.get('exact_times') != '1'
 
     def parse_time(self, tim: str) -> int | None:
         tim = tim.strip()

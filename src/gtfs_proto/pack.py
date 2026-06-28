@@ -30,6 +30,7 @@ def pack():
     feed = GtfsProto()
     if options.prev:
         prev = GtfsProto(options.prev)
+        # TODO: do we really need to keep the old strings and ids?
         feed.strings = prev.strings
         feed.id_store = prev.id_store
         feed.header.version = prev.header.version + 1
