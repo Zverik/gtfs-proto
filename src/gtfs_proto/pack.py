@@ -19,6 +19,8 @@ def pack():
     parser.add_argument('input', help='Input zipped gtfs file')
     parser.add_argument('-u', '--url', help='URL to the original feed')
     parser.add_argument('-d', '--date', help='Date for the original feed')
+    parser.add_argument('-v', '--version', type=int, default=1,
+                        help='Feed version (but plz better use --prev')
     parser.add_argument('-p', '--prev', type=argparse.FileType('rb'),
                         help='Last build for keeping ids consistent')
     parser.add_argument('-o', '--output', required=True,
@@ -36,7 +38,7 @@ def pack():
         feed.header.version = prev.header.version + 1
         feed.header.original_url = prev.header.original_url
     else:
-        feed.header.version = 1
+        feed.header.version = options.version
 
     if options.date:
         d = ''.join(c for c in options.date if c.isdecimal())
